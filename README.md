@@ -6,13 +6,13 @@ Reusable GitHub Actions workflows for repositories that share a centrally mainta
 
 `.github/workflows/claude-review.yml` is one reusable workflow with an internal matrix for code and Markdown reviews. Each job selects its own changed files from the pull request diff and skips Claude when there are no files of that kind. Callers do not pass a review kind.
 
-The caller controls when the workflow starts. A RAG caller can filter its pull requests to Markdown paths; a DCF caller can start it for code and documentation changes. A path filter controls the trigger, not the matrix: if a triggered pull request changes both Markdown and code, both jobs review their matching changes.
+The caller controls when the reusable workflow starts. Its optional `paths` filter only gates the trigger; it does not select a review kind. The internal matrix always separates code from Markdown, and a triggered pull request with both kinds of changes runs both matching jobs.
 
 The calling repository owns its root `REVIEW.md`. The shared action reads that file from the pull request's base branch, so a pull request cannot replace its own review policy. The shared workflow maintains a fixed allowlist of official documentation domains; callers cannot expand Claude's tool permissions through workflow inputs.
 
 ### Caller workflow
 
-This example starts the shared workflow for Markdown changes in a docs-only caller:
+This example starts the shared workflow for the listed pull request events. With no `paths` filter, it can run for code-only, Markdown-only, or mixed changes:
 
 ```yaml
 name: Claude review
@@ -20,10 +20,6 @@ name: Claude review
 on:
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
-    paths:
-      - '**.md'
-      - '**.markdown'
-      - '**.mdx'
 
 permissions:
   contents: read
@@ -38,7 +34,16 @@ jobs:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
 
-Callers that want both review kinds can omit the `paths` filter or include both code and Markdown paths. No `kind` input is needed. If this repository is the caller, use `uses: $/.github/workflows/claude-review.yml` to select the workflow from the caller's current commit.
+To start only for Markdown changes, callers can add this optional filter under `pull_request`:
+
+```yaml
+paths:
+  - '**.md'
+  - '**.markdown'
+  - '**.mdx'
+```
+
+No `kind` input is needed. If this repository is the caller, use `uses: $/.github/workflows/claude-review.yml` to select the workflow from the caller's current commit.
 
 ### Repository setup
 
