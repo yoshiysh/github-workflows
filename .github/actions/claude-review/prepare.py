@@ -79,6 +79,32 @@ def changed_files(diff_range: str) -> list[tuple[str, str, list[str], tuple[str,
   return entries
 
 
+def base_review_policy(base_ref: str, policy_path: Path) -> str:
+  """ベースにあるレビュー方針を返し、未作成なら空文字列を返す。"""
+  path = policy_path.as_posix()
+  listing = subprocess.run(
+    [
+      "git", "ls-tree", "--full-tree", "-z", base_ref, "--",
+      f":(literal){path}",
+    ],
+    capture_output=True,
+    check=False,
+  )
+  if listing.returncode != 0:
+    sys.exit(f"Could not inspect the base review policy: {base_ref}:{path}")
+  for entry in listing.stdout.split(b"\0"):
+    if not entry:
+      continue
+    metadata, entry_path = entry.split(b"\t", 1)
+    _mode, object_type, _object_id = metadata.decode().split()
+    if entry_path != path.encode():
+      continue
+    if object_type != "blob":
+      sys.exit(f"The base review policy is not a file: {base_ref}:{path}")
+    return run("git", "show", f"{base_ref}:{path}")
+  return ""
+
+
 def file_diff(
   diff_range: str, paths: list[str], *, whole_sections: bool, attributes: Path
 ) -> str:
@@ -387,14 +413,7 @@ def main() -> None:
   policy_path = Path(env.get("REVIEW_POLICY_PATH", "REVIEW.md"))
   if policy_path.is_absolute() or ".." in policy_path.parts:
     sys.exit("REVIEW_POLICY_PATH must be a repository-relative path without '..'.")
-  policy_ref = f"origin/pr-base:{policy_path.as_posix()}"
-  policy_exists = subprocess.run(
-    ["git", "cat-file", "-e", policy_ref], check=False,
-    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-  )
-  if policy_exists.returncode not in (0, 1):
-    sys.exit(f"Could not inspect the base review policy: {policy_ref}")
-  policy_text = run("git", "show", policy_ref) if policy_exists.returncode == 0 else ""
+  policy_text = base_review_policy("origin/pr-base", policy_path)
   (out / "review-policy.md").write_text(policy_text, encoding="utf-8")
   profile_path = Path(__file__).parent / "profiles" / f"{kind}.md"
   if not profile_path.is_file():
