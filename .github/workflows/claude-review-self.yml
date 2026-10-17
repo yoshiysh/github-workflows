@@ -12,5 +12,13 @@ permissions:
 jobs:
   review:
     uses: $/.github/workflows/claude-review.yml
+    # A public repository must not run pull request code on self-hosted runners.
+    with:
+      runs-on: '"ubuntu-latest"'
+      doc-domains: '["docs.python.org"]'
+      doc-sources: '[{"suffixes":[".md"],"diff-driver":"markdown"}]'
+      copy-sources: '[{"suffixes":[".py"],"ignore":["#","import ","from "]}]'
+      exclude-paths: '[]'
+      review-policy-path: REVIEW.md
     secrets:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

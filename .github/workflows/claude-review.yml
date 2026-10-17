@@ -2,6 +2,69 @@ name: Reusable Claude Review
 
 on:
   workflow_call:
+    inputs:
+      runs-on:
+        description: >-
+          Required JSON for the job's runs-on: a quoted label such as '"ubuntu-latest"', an
+          array of labels such as '["self-hosted","linux"]', or a group/labels object.
+        type: string
+        required: true
+      code-model:
+        description: Claude model for the code review.
+        type: string
+        default: claude-opus-5-5
+      docs-model:
+        description: Claude model for the documentation review.
+        type: string
+        default: claude-sonnet-5-5
+      code-effort:
+        description: Claude Code effort level for the code review.
+        type: string
+        default: high
+      docs-effort:
+        description: Claude Code effort level for the documentation review.
+        type: string
+        default: xhigh
+      subagent-model:
+        description: Claude model for the confirming agents in both reviews.
+        type: string
+        default: claude-sonnet-5-5
+      doc-domains:
+        description: >-
+          Required JSON array of documentation hostnames added to the shared WebFetch allowlist,
+          such as '["docs.example.com"]'; '[]' adds none.
+        type: string
+        required: true
+      doc-sources:
+        description: >-
+          Required JSON array of groups, each {"suffixes": [...], "diff-driver": ...}: the
+          lowercase file suffixes reviewed by the docs job, and a built-in Git diff driver name
+          whose sections the diff includes whole, or null for a plain diff. A suffix may appear
+          in only one group and not in copy-sources; '[]' sends every file to the code job.
+        type: string
+        required: true
+      copy-sources:
+        description: >-
+          JSON array of groups, each {"suffixes": [...], "ignore": [...]}: the file suffixes
+          compared for copies.tsv and the line prefixes, such as that language's comments and
+          imports, ignored in those files. Required; a suffix may appear in only one group, and
+          '[]' leaves copies.tsv empty.
+        type: string
+        required: true
+      exclude-paths:
+        description: >-
+          Required JSON array of repository-relative glob patterns using *, ? and ** that
+          exclude paths from review; '[]' excludes none.
+        type: string
+        required: true
+      review-policy-path:
+        description: Required repository-relative path of the review policy read from the base branch.
+        type: string
+        required: true
+      timeout-minutes:
+        description: Job timeout in minutes.
+        type: number
+        default: 60
     secrets:
       claude_code_oauth_token:
         description: Claude Code OAuth token owned by the calling repository.
@@ -19,8 +82,8 @@ jobs:
           github.event.pull_request.draft == false &&
           github.event.sender.type == 'User' &&
           github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: [self-hosted, linux]
-    timeout-minutes: 60
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
       pull-requests: write
@@ -51,5 +114,16 @@ jobs:
           GIT_CONFIG_VALUE_0: ""
         with:
           kind: ${{ matrix.kind }}
+          code_model: ${{ inputs.code-model }}
+          docs_model: ${{ inputs.docs-model }}
+          code_effort: ${{ inputs.code-effort }}
+          docs_effort: ${{ inputs.docs-effort }}
+          subagent_model: ${{ inputs.subagent-model }}
+          doc_domains: ${{ inputs.doc-domains }}
+          doc_sources: ${{ inputs.doc-sources }}
+          copy_sources: ${{ inputs.copy-sources }}
+          exclude_paths: ${{ inputs.exclude-paths }}
+          review_policy_path: ${{ inputs.review-policy-path }}
+          timeout_minutes: ${{ inputs.timeout-minutes }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}

@@ -138,7 +138,7 @@ def file_coverages(
 ) -> list[FileCoverage]:
   """差分のファイルごとに、差分と本文の読み方を判定する。"""
   files = []
-  for path, state, diff_file, _size in rows:
+  for path, state, diff_file, _size, _driver in rows:
     diff_rel = str((root / diff_file).resolve().relative_to(root))
     diff_ranges = sorted(ranges.get(diff_rel, []))
     snapshot = root / PR_SNAPSHOT / path

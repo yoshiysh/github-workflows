@@ -1,31 +1,12 @@
-import os
-import subprocess
-import sys
-import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(
-  0, str(Path(__file__).resolve().parents[1] / ".github/actions/claude-review")
-)
+from support import GitRepoCase
+
 import prepare
 
 
-class BaseReviewPolicyTests(unittest.TestCase):
-  def setUp(self) -> None:
-    self.original_cwd = Path.cwd()
-    self.temp_dir = tempfile.TemporaryDirectory()
-    self.addCleanup(self.temp_dir.cleanup)
-    self.addCleanup(os.chdir, self.original_cwd)
-    os.chdir(self.temp_dir.name)
-    subprocess.run(["git", "init", "--quiet"], check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.invalid"], check=True)
-
-  def commit(self, path: str) -> None:
-    subprocess.run(["git", "add", path], check=True)
-    subprocess.run(["git", "commit", "--quiet", "-m", "snapshot"], check=True)
-
+class BaseReviewPolicyTests(GitRepoCase):
   def test_missing_policy_returns_empty_text(self) -> None:
     Path("README.md").write_text("No policy yet.\n", encoding="utf-8")
     self.commit("README.md")
