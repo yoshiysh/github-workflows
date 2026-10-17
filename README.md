@@ -47,7 +47,7 @@ paths:
   - '**.mdx'
 ```
 
-No `kind` input is needed. If this repository is the caller, use `uses: $/.github/workflows/claude-review.yml` to select the workflow from the caller's current commit.
+No `kind` input is needed. If this repository is the caller, use `uses: $/.github/workflows/claude-review.yml` to select the workflow from the caller's current commit. This repository's own review policy is its root `REVIEW.md`.
 
 A job runs only for a `pull_request` event, and only when that event was triggered by a user rather than a bot (for `synchronize`, the user who pushed; for `ready_for_review`, the user who marked it ready), the pull request is not a draft, and its head branch is in the calling repository. Pull requests from forks are skipped and get no review.
 
