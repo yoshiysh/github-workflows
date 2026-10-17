@@ -11,7 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import review_options
@@ -134,19 +134,22 @@ def added_lines(diff: str) -> list[tuple[int, str]]:
 def copies(
   added: dict[str, list[tuple[int, str]]],
   sources: dict[str, str],
-  ignore_prefixes: Iterable[str],
+  ignore_prefixes: Mapping[str, tuple[str, ...]],
 ) -> list[str]:
   """足した行と同じ行がある場所を、"<場所の数>\t<場所>\t<行>" の行にして返す。
 
-  場所は path:line の並びで、この PR が足した行には + を付ける。短い行、ignore_prefixes で
-  始まる行（コメント・import など）、COPY_MAX_PLACES を超える場所にある行（どこにでもある書き方）は出さない。
+  場所は path:line の並びで、この PR が足した行には + を付ける。短い行、そのファイルの拡張子に
+  ignore_prefixes が割り当てた行頭（コメント・import など）で始まる行、COPY_MAX_PLACES を超える
+  場所にある行（どこにでもある書き方）は出さない。
   """
-  wanted = {
-    text: set()
-    for lines in added.values()
-    for _, text in lines
-    if len(text) >= COPY_MIN_LENGTH and not text.startswith(tuple(ignore_prefixes))
-  }
+  wanted = {}
+  for path, lines in added.items():
+    prefixes = next(
+      (prefixes for suffix, prefixes in ignore_prefixes.items() if path.endswith(suffix)), ()
+    )
+    for _, text in lines:
+      if len(text) >= COPY_MIN_LENGTH and not text.startswith(prefixes):
+        wanted.setdefault(text, set())
   new = {(path, number) for path, lines in added.items() for number, _ in lines}
   for path in sorted(sources):
     for number, line in enumerate(sources[path].split("\n"), 1):
@@ -165,7 +168,7 @@ def copies(
 
 
 def tracked_sources(
-  head: str, changed: Iterable[str], source_suffixes: Iterable[str]
+  head: str, changed: Iterable[str], source_suffixes: tuple[str, ...]
 ) -> dict[str, str]:
   """git が追うソースのファイルを {パス: 中身} で返す。
 
@@ -173,11 +176,10 @@ def tracked_sources(
   base を取り込んだ作業ツリーから読むと、番号が合わなくなる。
   """
   paths = run("git", "-c", "core.quotePath=false", "ls-files", "-z").split("\0")
-  suffixes = tuple(source_suffixes)
   sources = {}
   for path in paths:
     file = Path(path)
-    if path.endswith(suffixes) and file.is_file() and not file.is_symlink():
+    if path.endswith(source_suffixes) and file.is_file() and not file.is_symlink():
       sources[path] = file.read_text(encoding="utf-8", errors="replace")
   for path in changed:
     sources[path] = run("git", "--literal-pathspecs", "show", f"{head}:{path}")
@@ -266,15 +268,15 @@ def collect(
   diff_dir: Path,
   attributes: Path,
   *,
-  doc_suffixes: Iterable[str],
-  source_suffixes: Iterable[str],
+  doc_suffixes: tuple[str, ...],
+  source_suffixes: tuple[str, ...],
   exclude_paths: Iterable[str],
 ) -> tuple[list[str], list[str], list[str], dict[str, list[tuple[int, str]]]]:
   """このジョブのファイルの差分を書き出し、一覧の行・除外の行・変更後に symlink のパス・ソースに足した行を返す。"""
   rows, excluded, symlinks, added = [], [], [], {}
-  docs, sources, patterns = tuple(doc_suffixes), tuple(source_suffixes), list(exclude_paths)
+  patterns = list(exclude_paths)
   for path, status, paths, modes in changed_files(diff_range):
-    if path.lower().endswith(docs) != (kind == "docs"):
+    if path.lower().endswith(doc_suffixes) != (kind == "docs"):
       continue
     if any(
       path == reserved or path.startswith(f"{reserved}/")
@@ -301,7 +303,7 @@ def collect(
     rows.append(f"{path}\t{status}\t{diff_file}\t{len(text.encode())}")
     if modes[1] == SYMLINK_MODE:
       symlinks.append(path)
-    elif path.endswith(sources) and (lines := added_lines(text)):
+    elif path.endswith(source_suffixes) and (lines := added_lines(text)):
       added[path] = lines
   return rows, excluded, symlinks, added
 
@@ -437,21 +439,19 @@ def main() -> None:
   (out / "review-profile.md").write_text(
     profile_path.read_text(encoding="utf-8"), encoding="utf-8"
   )
+  prefixes = review_options.ignore_prefixes(settings["copy_sources"])
+  source_suffixes = tuple(prefixes)
   rows, excluded, symlinks, added = collect(
     kind,
     f"origin/pr-base...{env['HEAD_SHA']}",
     diff_dir,
     attributes,
-    doc_suffixes=settings["doc_suffixes"],
-    source_suffixes=settings["source_suffixes"],
+    doc_suffixes=tuple(settings["doc_suffixes"]),
+    source_suffixes=source_suffixes,
     exclude_paths=settings["exclude_paths"],
   )
   repeated = (
-    copies(
-      added,
-      tracked_sources(env["HEAD_SHA"], added, settings["source_suffixes"]),
-      settings["copy_ignore_prefixes"],
-    )
+    copies(added, tracked_sources(env["HEAD_SHA"], added, source_suffixes), prefixes)
     if added
     else []
   )

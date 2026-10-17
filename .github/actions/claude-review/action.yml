@@ -26,11 +26,8 @@ inputs:
   doc_suffixes:
     description: JSON array of file suffixes reviewed by the docs kind.
     required: true
-  source_suffixes:
-    description: JSON array of file suffixes compared for copies.tsv.
-    required: true
-  copy_ignore_prefixes:
-    description: JSON array of line prefixes that copies.tsv ignores.
+  copy_sources:
+    description: JSON array of copies.tsv suffix groups and the line prefixes each ignores.
     required: true
   exclude_paths:
     description: JSON array of path patterns excluded from review.
@@ -63,8 +60,7 @@ runs:
         SUBAGENT_MODEL: ${{ inputs.subagent_model }}
         DOC_DOMAINS: ${{ inputs.doc_domains }}
         DOC_SUFFIXES: ${{ inputs.doc_suffixes }}
-        SOURCE_SUFFIXES: ${{ inputs.source_suffixes }}
-        COPY_IGNORE_PREFIXES: ${{ inputs.copy_ignore_prefixes }}
+        COPY_SOURCES: ${{ inputs.copy_sources }}
         EXCLUDE_PATHS: ${{ inputs.exclude_paths }}
         REVIEW_POLICY_PATH: ${{ inputs.review_policy_path }}
         TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
@@ -95,8 +91,7 @@ runs:
         REPO: ${{ github.repository }}
         GH_TOKEN: ${{ inputs.github_token }}
         DOC_SUFFIXES: ${{ steps.options.outputs.doc_suffixes }}
-        SOURCE_SUFFIXES: ${{ steps.options.outputs.source_suffixes }}
-        COPY_IGNORE_PREFIXES: ${{ steps.options.outputs.copy_ignore_prefixes }}
+        COPY_SOURCES: ${{ steps.options.outputs.copy_sources }}
         EXCLUDE_PATHS: ${{ steps.options.outputs.exclude_paths }}
         REVIEW_POLICY_PATH: ${{ steps.options.outputs.review_policy_path }}
       run: python "$GITHUB_ACTION_PATH/prepare.py"

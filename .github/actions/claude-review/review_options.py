@@ -22,6 +22,8 @@ SOURCE_SUFFIX = re.compile(r"\.[A-Za-z0-9]{1,16}")
 FIXED_DOC_DOMAINS = ("docs.github.com", "code.claude.com", "platform.claude.com")
 MAX_LIST_ITEMS = 64
 MAX_TEXT_LENGTH = 200
+# 出力は後続 step の env になる。Linux は env の 1 文字列を MAX_ARG_STRLEN（128 KiB）までしか渡さない。
+MAX_OUTPUT_BYTES = 32 * 1024
 # GitHub-hosted runner の job 実行上限。どちらの runner でも同じ値が通るようにする。
 MAX_TIMEOUT_MINUTES = 360
 KIND_VARIABLES = {
@@ -107,14 +109,24 @@ def path_matches(pattern: str, path: str) -> bool:
   return matched[0]
 
 
-def json_list(env: dict[str, str], variable: str, accepts) -> list[str]:
-  """JSON 配列の文字列を読み、各要素を検査し、順序を保って重複を除く。"""
+def json_value(env: dict[str, str], variable: str, kind: type, label: str):
+  """env の JSON を読み、kind の値でなければ止める。"""
   try:
     value = json.loads(env.get(variable, ""))
   except json.JSONDecodeError:
-    raise RejectedOption(f"{variable} is not a JSON array.") from None
-  if not isinstance(value, list):
-    raise RejectedOption(f"{variable} is not a JSON array.")
+    raise RejectedOption(f"{variable} is not a JSON {label}.") from None
+  if not isinstance(value, kind):
+    raise RejectedOption(f"{variable} is not a JSON {label}.")
+  return value
+
+
+def json_list(env: dict[str, str], variable: str, accepts) -> list[str]:
+  """JSON 配列の文字列を読み、各要素を検査し、順序を保って重複を除く。"""
+  return checked_items(json_value(env, variable, list, "array"), variable, accepts)
+
+
+def checked_items(value: list, variable: str, accepts) -> list[str]:
+  """配列の各要素を検査し、順序を保って重複を除く。"""
   if len(value) > MAX_LIST_ITEMS:
     raise RejectedOption(f"{variable} has more than {MAX_LIST_ITEMS} items.")
   items = []
@@ -126,6 +138,39 @@ def json_list(env: dict[str, str], variable: str, accepts) -> list[str]:
   return items
 
 
+def copy_sources(env: dict[str, str]) -> list[dict[str, list[str]]]:
+  """COPY_SOURCES の [{"suffixes": 拡張子の配列, "ignore": 無視する行頭の配列}] を検査して返す。
+
+  1 つの拡張子は 1 つのグループにだけ置ける。
+  """
+  groups = json_value(env, "COPY_SOURCES", list, "array")
+  if len(groups) > MAX_LIST_ITEMS:
+    raise RejectedOption(f"COPY_SOURCES has more than {MAX_LIST_ITEMS} groups.")
+  checked, seen = [], set()
+  for group in groups:
+    if not isinstance(group, dict) or set(group) != {"suffixes", "ignore"}:
+      raise RejectedOption('COPY_SOURCES groups must have only "suffixes" and "ignore".')
+    if not isinstance(group["suffixes"], list) or not isinstance(group["ignore"], list):
+      raise RejectedOption('COPY_SOURCES "suffixes" and "ignore" must be arrays.')
+    suffixes = checked_items(group["suffixes"], "COPY_SOURCES", is_source_suffix)
+    if not suffixes:
+      raise RejectedOption('COPY_SOURCES has a group with no "suffixes".')
+    if seen.intersection(suffixes):
+      raise RejectedOption("COPY_SOURCES lists a suffix in more than one group.")
+    seen.update(suffixes)
+    checked.append(
+      {"suffixes": suffixes, "ignore": checked_items(group["ignore"], "COPY_SOURCES", is_text)}
+    )
+  return checked
+
+
+def ignore_prefixes(groups: list[dict[str, list[str]]]) -> dict[str, tuple[str, ...]]:
+  """検査済みの COPY_SOURCES を、拡張子 → 無視する行頭の対応に展開する。"""
+  return {
+    suffix: tuple(group["ignore"]) for group in groups for suffix in group["suffixes"]
+  }
+
+
 def review_settings(env: dict[str, str]) -> dict:
   """prepare.py が使う値を検査して返す。"""
   policy = env.get("REVIEW_POLICY_PATH", "")
@@ -133,8 +178,7 @@ def review_settings(env: dict[str, str]) -> dict:
     raise RejectedOption("REVIEW_POLICY_PATH is not an accepted repository-relative path.")
   return {
     "doc_suffixes": json_list(env, "DOC_SUFFIXES", is_doc_suffix),
-    "source_suffixes": json_list(env, "SOURCE_SUFFIXES", is_source_suffix),
-    "copy_ignore_prefixes": json_list(env, "COPY_IGNORE_PREFIXES", is_text),
+    "copy_sources": copy_sources(env),
     "exclude_paths": json_list(env, "EXCLUDE_PATHS", is_exclude_pattern),
     "review_policy_path": policy,
   }
@@ -180,6 +224,9 @@ def outputs(env: dict[str, str]) -> str:
   values["webfetch_tools"] = ",".join(f"WebFetch(domain:{domain})" for domain in domains)
   for name, value in review_settings(env).items():
     values[name] = value if isinstance(value, str) else json.dumps(value, separators=(",", ":"))
+  for name, value in values.items():
+    if len(value.encode()) > MAX_OUTPUT_BYTES:
+      raise RejectedOption(f"The checked {name} value is longer than {MAX_OUTPUT_BYTES} bytes.")
   return "".join(f"{name}={value}\n" for name, value in values.items())
 
 

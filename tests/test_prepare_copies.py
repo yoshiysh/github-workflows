@@ -1,38 +1,15 @@
-import os
-import subprocess
-import sys
-import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(
-  0, str(Path(__file__).resolve().parents[1] / ".github/actions/claude-review")
-)
+from support import GitRepoCase, default_env
+
 import prepare
 import review_options
-from workflow_defaults import default_env
 
 REPEATED = 'const message = `Unsupported review kind: ${kind}`;'
 
 
-class RepoCase(unittest.TestCase):
-  def setUp(self) -> None:
-    self.original_cwd = Path.cwd()
-    self.temp_dir = tempfile.TemporaryDirectory()
-    self.addCleanup(self.temp_dir.cleanup)
-    self.addCleanup(os.chdir, self.original_cwd)
-    os.chdir(self.temp_dir.name)
-    subprocess.run(["git", "init", "--quiet"], check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.invalid"], check=True)
-
-  def commit(self, *paths: str) -> str:
-    subprocess.run(["git", "add", *paths], check=True)
-    subprocess.run(["git", "commit", "--quiet", "-m", "snapshot"], check=True)
-    return subprocess.run(
-      ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
-    ).stdout.strip()
-
+class RepoCase(GitRepoCase):
   def collect(self, kind: str = "code", **values: str) -> tuple:
     settings = review_options.review_settings({**default_env(), **values})
     diff_dir = Path("diff")
@@ -42,8 +19,8 @@ class RepoCase(unittest.TestCase):
       f"{self.base}...HEAD",
       diff_dir,
       Path("unused.attributes"),
-      doc_suffixes=settings["doc_suffixes"],
-      source_suffixes=settings["source_suffixes"],
+      doc_suffixes=tuple(settings["doc_suffixes"]),
+      source_suffixes=tuple(review_options.ignore_prefixes(settings["copy_sources"])),
       exclude_paths=settings["exclude_paths"],
     )
     return rows, excluded, symlinks, lines, settings
@@ -52,10 +29,9 @@ class RepoCase(unittest.TestCase):
     Path(path).write_text(added, encoding="utf-8")
     self.commit(path)
     _rows, _excluded, _symlinks, lines, settings = self.collect()
+    prefixes = review_options.ignore_prefixes(settings["copy_sources"])
     return prepare.copies(
-      lines,
-      prepare.tracked_sources("HEAD", lines, settings["source_suffixes"]),
-      settings["copy_ignore_prefixes"],
+      lines, prepare.tracked_sources("HEAD", lines, tuple(prefixes)), prefixes
     )
 
 
@@ -103,6 +79,29 @@ class SourceCopyTests(RepoCase):
       rows,
       [f"2\ta.mjs:3 +b.mjs:3\t{constant}", f"2\ta.mjs:1 +b.mjs:1\t{function}"],
     )
+
+  def test_repeated_private_member_line_in_mjs_is_reported(self) -> None:
+    line = "#cache = new Map(Object.entries(defaultReviewOptions));"
+    Path("a.mjs").write_text(f"class A {{\n  {line}\n}}\n")
+    self.base = self.commit("a.mjs")
+
+    rows = self.copies_after("b.mjs", f"class B {{\n  {line}\n}}\n")
+
+    self.assertEqual(rows, [f"2\ta.mjs:2 +b.mjs:2\t{line}"])
+
+  def test_repeated_rust_attribute_line_is_not_reported(self) -> None:
+    line = "#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]"
+    Path("a.rs").write_text(f"{line}\nstruct A;\n")
+    self.base = self.commit("a.rs")
+
+    self.assertEqual(self.copies_after("b.rs", f"{line}\nstruct B;\n"), [])
+
+  def test_repeated_comment_line_in_python_is_not_reported(self) -> None:
+    line = "# The base branch decides which review policy applies here."
+    Path("a.py").write_text(f"{line}\nA = 1\n")
+    self.base = self.commit("a.py")
+
+    self.assertEqual(self.copies_after("b.py", f"{line}\nB = 2\n"), [])
 
 
 class ExcludePathTests(RepoCase):

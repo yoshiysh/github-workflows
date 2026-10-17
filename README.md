@@ -49,7 +49,7 @@ paths:
 
 No `kind` input is needed. If this repository is the caller, use `uses: $/.github/workflows/claude-review.yml` to select the workflow from the caller's current commit.
 
-The job runs only for non-draft pull requests opened by a user from a branch in the calling repository. Pull requests from forks are skipped and get no review.
+A job runs only for a `pull_request` event, and only when that event was triggered by a user rather than a bot (for `synchronize`, the user who pushed; for `ready_for_review`, the user who marked it ready), the pull request is not a draft, and its head branch is in the calling repository. Pull requests from forks are skipped and get no review.
 
 ### Runner
 
@@ -83,8 +83,7 @@ Every input except `runs-on` is optional. Defaults are the `default:` values in 
 | `subagent-model` | `CLAUDE_CODE_SUBAGENT_MODEL`, the default model for the confirming agents in both jobs | Model ID or alias |
 | `doc-domains` | Hostnames added to the shared WebFetch allowlist (`FIXED_DOC_DOMAINS` in `review_options.py`) | Lowercase DNS hostnames; no scheme, path, port, wildcard, or IP address |
 | `doc-suffixes` | File suffixes reviewed by the docs job; every other changed file goes to the code job | `.` followed by lowercase letters or digits |
-| `source-suffixes` | Code files whose added lines are compared for `copies.tsv` | `.` followed by letters or digits, matched case-sensitively |
-| `copy-ignore-prefixes` | Line prefixes, such as comments and imports, that `copies.tsv` ignores | Non-empty text without tabs, newlines, or other control characters |
+| `copy-sources` | Code files whose added lines are compared for `copies.tsv`, and the line prefixes ignored in each, such as that language's comments and imports | A JSON array of groups, each `{"suffixes": [...], "ignore": [...]}` with only those two keys: `suffixes` is a non-empty array of file suffixes (`.` followed by letters or digits, matched case-sensitively), and `ignore` is an array of prefixes (non-empty text without tabs, newlines, or other control characters). A suffix may appear in only one group |
 | `exclude-paths` | Changed paths left out of review and listed in `excluded.tsv` with the matching pattern; the default excludes lockfiles | Glob patterns built from literal characters, `*`, `?` and `**`; no `[` or `]`, no leading or trailing `/`, no empty, `.` or `..` segments, no control characters, and at most `MAX_TEXT_LENGTH` (in `review_options.py`) characters |
 | `review-policy-path` | The review policy file read from the base branch | A repository-relative file path: no leading or trailing `/`, no empty, `.` or `..` segments, no control characters, and at most `MAX_TEXT_LENGTH` (in `review_options.py`) characters |
 | `timeout-minutes` | The job's `timeout-minutes` | Whole number from 1 to `MAX_TIMEOUT_MINUTES` in `review_options.py` |
@@ -92,6 +91,10 @@ Every input except `runs-on` is optional. Defaults are the `default:` values in 
 Each job uses only the model and effort inputs for its own kind; an empty or rejected value stops that job instead of falling back to the other kind's value. A model value must start with a letter or digit and may contain letters, digits, `.`, `_`, `:`, `/`, `@`, `-`, and one trailing `[...]` such as `opus[1m]`; spaces, quotes, and `$` are rejected.
 
 `exclude-paths` patterns are matched against the whole repository-relative path, case-sensitively, in time proportional to the pattern length times the path length. `*` matches any characters except `/`, `?` matches one such character, and `**` as a whole segment matches zero or more directories (one or more segments when it is the last segment), so `*.lock` matches only at the repository root, `**/*.lock` matches at any depth, and `vendor/**` matches everything under `vendor/`. These are the results of Python's [`PurePath.full_match`](https://docs.python.org/3.14/library/pathlib.html#pathlib.PurePath.full_match) for the same patterns; brackets are not supported. Passing `exclude-paths` replaces the default lockfile patterns, so include them in the value when lockfiles should stay excluded. Excluded paths are still read as comparison sources for `copies.tsv`.
+
+Each `copy-sources` group gives one language's suffixes and prefixes, so a prefix such as `#` can mark a comment in `.py` files without hiding JavaScript private members (`#cache = …`) in `.mjs` files. A value replaces the whole default array, so include every suffix that should still be compared.
+
+Every checked value, such as a serialized list input, also has a size limit (`MAX_OUTPUT_BYTES` in `review_options.py`), because each checked value is passed to the next step as one environment variable and Linux limits a single environment string to 128 KiB; a larger value stops the job with an error.
 
 The docs job reads files with any `doc-suffixes` suffix as Markdown, using Git's Markdown diff driver to include whole changed sections.
 
@@ -104,6 +107,7 @@ The docs job reads files with any `doc-suffixes` suffix as Markdown, using Git's
       exclude-paths: '["**/*.lock","**/package-lock.json","**/pnpm-lock.yaml","vendor/**"]'
       code-model: claude-sonnet-5-5
       code-effort: medium
+      copy-sources: '[{"suffixes":[".py"],"ignore":["#","import ","from "]},{"suffixes":[".go"],"ignore":["//","import "]}]'
 ```
 
 ### Repository setup

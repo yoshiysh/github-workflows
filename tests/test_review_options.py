@@ -6,11 +6,9 @@ import sys
 import unittest
 from pathlib import Path, PurePosixPath
 
-sys.path.insert(
-  0, str(Path(__file__).resolve().parents[1] / ".github/actions/claude-review")
-)
+from support import ACTION, default_env, output_values, workflow_defaults
+
 import review_options
-from workflow_defaults import ACTION, default_env, workflow_defaults
 
 
 class ModelNameTests(unittest.TestCase):
@@ -56,9 +54,7 @@ class KindOptionTests(unittest.TestCase):
     return {**default_env(), "SUBAGENT_MODEL": "claude-haiku-5-5", **values}
 
   def output(self, **values: str) -> dict[str, str]:
-    return dict(
-      line.split("=", 1) for line in review_options.outputs(self.env(**values)).splitlines()
-    )
+    return output_values(review_options.outputs(self.env(**values)))
 
   def test_selects_the_model_and_effort_for_each_kind(self) -> None:
     for kind in ("code", "docs"):
@@ -171,7 +167,7 @@ class DocDomainTests(unittest.TestCase):
 
   def test_prompt_and_allowed_tools_list_the_same_domains(self) -> None:
     env = {**default_env(), "KIND": "code", "DOC_DOMAINS": '["nodejs.org"]'}
-    lines = dict(line.split("=", 1) for line in review_options.outputs(env).splitlines())
+    lines = output_values(review_options.outputs(env))
     prose = lines["doc_domains"].replace(", and ", ", ").split(", ")
     tools = [
       tool.removeprefix("WebFetch(domain:").removesuffix(")")
@@ -193,28 +189,48 @@ class ReviewSettingTests(unittest.TestCase):
 
   def test_settings_round_trip_through_the_written_outputs(self) -> None:
     env = {**default_env(), "KIND": "code", "EXCLUDE_PATHS": '["vendor/**"]'}
-    lines = dict(line.split("=", 1) for line in review_options.outputs(env).splitlines())
+    lines = output_values(review_options.outputs(env))
     passed = {name: lines[name.lower()] for name in (
-      "DOC_SUFFIXES", "SOURCE_SUFFIXES", "COPY_IGNORE_PREFIXES", "EXCLUDE_PATHS",
-      "REVIEW_POLICY_PATH",
+      "DOC_SUFFIXES", "COPY_SOURCES", "EXCLUDE_PATHS", "REVIEW_POLICY_PATH",
     )}
     self.assertEqual(review_options.review_settings(passed), review_options.review_settings(env))
 
   def test_suffixes(self) -> None:
     self.assertEqual(self.settings(DOC_SUFFIXES='[".rst",".md",".md"]')["doc_suffixes"], [".rst", ".md"])
-    self.assertEqual(self.settings(SOURCE_SUFFIXES='[".R"]')["source_suffixes"], [".R"])
     for value in ('["md"]', '[".MD"]', '[".m d"]', '["*.md"]', '[".md/"]', '[""]'):
       self.rejects("DOC_SUFFIXES", value)
-    for value in ('["py"]', '[".p-y"]', '[".py\\n"]'):
-      self.rejects("SOURCE_SUFFIXES", value)
 
-  def test_copy_ignore_prefixes(self) -> None:
+  def test_copy_sources(self) -> None:
+    value = '[{"suffixes":[".R",".r",".R"],"ignore":["#","library("]},{"suffixes":[".sql"],"ignore":[]}]'
     self.assertEqual(
-      self.settings(COPY_IGNORE_PREFIXES='["use ","-- "]')["copy_ignore_prefixes"],
-      ["use ", "-- "],
+      self.settings(COPY_SOURCES=value)["copy_sources"],
+      [{"suffixes": [".R", ".r"], "ignore": ["#", "library("]}, {"suffixes": [".sql"], "ignore": []}],
     )
-    for value in ('[""]', '["a\\nb"]', '["a\\tb"]', '["\\u0000"]', '["' + "x" * 201 + '"]'):
-      self.rejects("COPY_IGNORE_PREFIXES", value)
+    self.assertEqual(self.settings(COPY_SOURCES="[]")["copy_sources"], [])
+    for value in (
+      "", "{}", '{".py":["#"]}', '[".py"]', "[[]]",
+      '[{"suffixes":[".py"]}]', '[{"ignore":["#"]}]',
+      '[{"suffixes":[".py"],"ignore":["#"],"extra":[]}]',
+      '[{"suffixes":".py","ignore":["#"]}]', '[{"suffixes":[".py"],"ignore":"#"}]',
+      '[{"suffixes":[],"ignore":["#"]}]',
+      '[{"suffixes":[".py"],"ignore":["#"]},{"suffixes":[".sh",".py"],"ignore":["#"]}]',
+      '[{"suffixes":["py"],"ignore":[]}]', '[{"suffixes":[".p-y"],"ignore":[]}]',
+      '[{"suffixes":["*.py"],"ignore":[]}]', '[{"suffixes":[".py\\n"],"ignore":[]}]',
+      '[{"suffixes":[".py"],"ignore":[1]}]', '[{"suffixes":[".py"],"ignore":[""]}]',
+      '[{"suffixes":[".py"],"ignore":["a\\nb"]}]', '[{"suffixes":[".py"],"ignore":["a\\tb"]}]',
+      '[{"suffixes":[".py"],"ignore":["a\\u0000b"]}]',
+      '[{"suffixes":[".py"],"ignore":["' + "x" * 201 + '"]}]',
+    ):
+      self.rejects("COPY_SOURCES", value)
+
+  def test_copy_sources_limit_groups_suffixes_and_prefixes(self) -> None:
+    limit = review_options.MAX_LIST_ITEMS
+    groups = [{"suffixes": [f".s{index}"], "ignore": []} for index in range(limit + 1)]
+    self.rejects("COPY_SOURCES", json.dumps(groups))
+    suffixes = [f".s{index}" for index in range(limit + 1)]
+    self.rejects("COPY_SOURCES", json.dumps([{"suffixes": suffixes, "ignore": []}]))
+    prefixes = [f"p{index}" for index in range(limit + 1)]
+    self.rejects("COPY_SOURCES", json.dumps([{"suffixes": [".py"], "ignore": prefixes}]))
 
   def test_exclude_paths(self) -> None:
     self.assertEqual(
@@ -287,6 +303,24 @@ class PathMatchTests(unittest.TestCase):
       )
     except subprocess.TimeoutExpired:
       self.fail("path_matches did not finish the pathological patterns within 10 seconds")
+
+
+class OutputSizeTests(unittest.TestCase):
+  def test_rejects_a_checked_value_longer_than_the_output_limit(self) -> None:
+    prefix = "x" * review_options.MAX_TEXT_LENGTH
+    count = review_options.MAX_OUTPUT_BYTES // review_options.MAX_TEXT_LENGTH // 8 + 1
+    groups = [
+      {"suffixes": [f".s{group}"], "ignore": [f"{index:03d}{prefix[3:]}" for index in range(count)]}
+      for group in range(8)
+    ]
+    env = {**default_env(), "KIND": "code", "COPY_SOURCES": json.dumps(groups)}
+    self.assertEqual(review_options.copy_sources(env), groups)
+    with self.assertRaisesRegex(review_options.RejectedOption, "copy_sources.*bytes"):
+      review_options.outputs(env)
+
+  def test_default_outputs_fit_the_limit(self) -> None:
+    for value in output_values(review_options.outputs({**default_env(), "KIND": "code"})).values():
+      self.assertLessEqual(len(value.encode()), review_options.MAX_OUTPUT_BYTES)
 
 
 class TimeoutTests(unittest.TestCase):

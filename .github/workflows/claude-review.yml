@@ -39,14 +39,13 @@ on:
         description: JSON array of lowercase file suffixes reviewed by the docs job.
         type: string
         default: '[".md",".markdown",".mdx"]'
-      source-suffixes:
-        description: JSON array of file suffixes whose added lines are compared for copies.tsv.
+      copy-sources:
+        description: >-
+          JSON array of groups, each {"suffixes": [...], "ignore": [...]}: the file suffixes
+          compared for copies.tsv and the line prefixes, such as that language's comments and
+          imports, ignored in those files. A suffix may appear in only one group.
         type: string
-        default: '[".rs",".py",".sh",".js",".mjs",".cjs",".ts",".mts",".cts"]'
-      copy-ignore-prefixes:
-        description: JSON array of line prefixes, such as comments and imports, that copies.tsv ignores.
-        type: string
-        default: '["//","/*","#","*","use ","pub use ","import ","from ","} from ","export * ","export {"]'
+        default: '[{"suffixes":[".rs"],"ignore":["//","/*","*","#","use ","pub use "]},{"suffixes":[".py"],"ignore":["#","import ","from "]},{"suffixes":[".sh"],"ignore":["#"]},{"suffixes":[".js",".mjs",".cjs",".ts",".mts",".cts"],"ignore":["//","/*","*","#!","import ","} from ","export * ","export {"]}]'
       exclude-paths:
         description: >-
           JSON array of repository-relative glob patterns using *, ? and ** that exclude paths
@@ -117,8 +116,7 @@ jobs:
           subagent_model: ${{ inputs.subagent-model }}
           doc_domains: ${{ inputs.doc-domains }}
           doc_suffixes: ${{ inputs.doc-suffixes }}
-          source_suffixes: ${{ inputs.source-suffixes }}
-          copy_ignore_prefixes: ${{ inputs.copy-ignore-prefixes }}
+          copy_sources: ${{ inputs.copy-sources }}
           exclude_paths: ${{ inputs.exclude-paths }}
           review_policy_path: ${{ inputs.review-policy-path }}
           timeout_minutes: ${{ inputs.timeout-minutes }}
