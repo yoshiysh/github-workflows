@@ -16,7 +16,7 @@
 | `.github/actions/claude-review/action.yml` | `review_options.py`、`claude-review.yml` の `with:`、`README.md` |
 | `.github/actions/claude-review/profiles/*.md` | `action.yml` の `prompt`（確認役への指示と重複・矛盾しないか） |
 | `.github/workflows/claude-review.yml` | `action.yml` の `inputs`、`claude-review-self.yml`、`README.md`「Inputs」「Runner」 |
-| `.github/workflows/claude-review-self.yml` | `claude-review.yml` の `inputs` と `default:` |
+| `.github/workflows/claude-review-self.yml` | `claude-review.yml` の `inputs`（必須か既定値ありか） |
 | `tests/` | テスト対象の実装、`tests/support.py` |
 | `README.md`・`REVIEW.md` | 記述が指す実装（input 定義・検査規則・ファイル名） |
 
@@ -28,7 +28,7 @@
   - 値を選ぶ `&&` / `||` の式で、空や不正な値を別の値に黙って置き換える
   - caller の入力で、Claude に許すツールの種類や書き込み先を広げる（caller が足せるのは検査済みの文書ホストだけ）
   - 方針ファイルや制御ファイル（`prepare.py` の `CONTROL_DIR`・`CONTROL_FILES`）を base ブランチ以外から読む、または PR 側の版を有効な設定として残す
-- **正本の一意性**：caller 向け既定値の正本は `claude-review.yml` の `default:` 1 か所。同じ値・列挙・上限を 2 か所に書いていないか。書き写しはいずれ食い違う
+- **正本の一意性と必須 input**：caller のリポジトリを表す input（何を読み、どう分類するか）は必須で、共有側に既定値を持たない。そこに既定値を足して特定言語・エコシステムの知識を共有側へ戻していないか。運用の調整値（モデル・effort・timeout）の既定値の正本は `claude-review.yml` の `default:` 1 か所で、同じ値・列挙・上限を 2 か所に書いていないか。書き写しはいずれ食い違う
 - **Action の固定と runner**：外部 Action は full commit SHA で固定する。self-review は GitHub-hosted runner で動かす（public リポジトリで PR のコードを self-hosted runner に流さない）。workflow と job の `permissions` が必要以上に広くないか、Secret が露出しないか
 - **共有側の汎用性**：caller 固有・特定言語・特定ドメインの知識を共有側（profiles・prompt・既定値）に持ち込んでいないか。特定の利用者やリポジトリを推測させる名前を書いていないか
 - **性能**：caller と PR の双方が入力を与える箇所で、組み合わせ次第で計算量が爆発しないか（例: `exclude-paths` のパターンと PR のパスの照合）。上限や照合方式の変更は、病的な入力での実行時間で確かめる

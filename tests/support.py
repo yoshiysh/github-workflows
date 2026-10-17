@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -9,17 +10,38 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ACTION_DIR = ROOT / ".github/actions/claude-review"
 WORKFLOW = ROOT / ".github/workflows/claude-review.yml"
+SELF_REVIEW = ROOT / ".github/workflows/claude-review-self.yml"
 ACTION = ACTION_DIR / "action.yml"
 INPUT = re.compile(r"^      ([a-z][a-z-]*):$")
-DEFAULT = re.compile(r"^        default: (.+)$")
+FIELD = re.compile(r"^        (default|required): (.+)$")
+WITH_VALUE = re.compile(r"^      ([a-z][a-z-]*): (.+)$")
 
 sys.path.insert(0, str(ACTION_DIR))
 
-# 既定値の正本は workflow の default: なので、テストもそこから読む（PyYAML は無い）。
-EXPECTED = {
+REQUIRED_INPUTS = {
+  "runs-on", "doc-domains", "doc-suffixes", "copy-sources", "exclude-paths",
+  "review-policy-path",
+}
+DEFAULTED_INPUTS = {
   "code-model", "docs-model", "code-effort", "docs-effort", "subagent-model",
-  "doc-domains", "doc-suffixes", "copy-sources", "exclude-paths", "review-policy-path",
   "timeout-minutes",
+}
+
+# 必須 input は共有側に既定値が無いので、テストは caller の例としてこの値を渡す。
+FIXTURE_INPUTS = {
+  "doc-domains": "[]",
+  "doc-suffixes": '[".md",".markdown",".mdx"]',
+  "copy-sources": json.dumps([
+    {"suffixes": [".rs"], "ignore": ["//", "/*", "*", "#", "use ", "pub use "]},
+    {"suffixes": [".py"], "ignore": ["#", "import ", "from "]},
+    {"suffixes": [".sh"], "ignore": ["#"]},
+    {
+      "suffixes": [".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"],
+      "ignore": ["//", "/*", "*", "#!", "import ", "} from ", "export * ", "export {"],
+    },
+  ]),
+  "exclude-paths": '["**/*.lock","**/package-lock.json","**/pnpm-lock.yaml"]',
+  "review-policy-path": "REVIEW.md",
 }
 
 
@@ -29,9 +51,9 @@ def scalar(text: str) -> str:
   return text
 
 
-def workflow_defaults() -> dict[str, str]:
-  """on.workflow_call.inputs の各 default: を文字列で返す。"""
-  defaults, name, inside = {}, None, False
+def workflow_inputs() -> dict[str, dict[str, str]]:
+  """on.workflow_call.inputs の各 input の default: と required: を文字列で返す。"""
+  inputs, name, inside = {}, None, False
   for line in WORKFLOW.read_text(encoding="utf-8").splitlines():
     if line == "    inputs:":
       inside = True
@@ -39,29 +61,44 @@ def workflow_defaults() -> dict[str, str]:
       break
     elif inside and (match := INPUT.match(line)):
       name = match.group(1)
-    elif inside and name and (match := DEFAULT.match(line)):
-      defaults[name] = scalar(match.group(1))
-  if set(defaults) != EXPECTED:
-    raise AssertionError(f"workflow defaults changed: {sorted(defaults)}")
-  return defaults
+      inputs[name] = {}
+    elif inside and name and (match := FIELD.match(line)):
+      inputs[name][match.group(1)] = scalar(match.group(2))
+  if set(inputs) != REQUIRED_INPUTS | DEFAULTED_INPUTS:
+    raise AssertionError(f"workflow inputs changed: {sorted(inputs)}")
+  return inputs
+
+
+def self_review_inputs() -> dict[str, str]:
+  """claude-review-self.yml が reusable workflow に渡す with: の値を返す。"""
+  values, inside = {}, False
+  for line in SELF_REVIEW.read_text(encoding="utf-8").splitlines():
+    if line == "    with:":
+      inside = True
+    elif inside and (match := WITH_VALUE.match(line)):
+      values[match.group(1)] = scalar(match.group(2))
+    elif inside:
+      break
+  return values
+
+
+def inputs_env(inputs: dict[str, str]) -> dict[str, str]:
+  """reusable workflow の input 名の値を、review_options が読む env にする。"""
+  defaults = {
+    name: field["default"]
+    for name, field in workflow_inputs().items()
+    if name in DEFAULTED_INPUTS
+  }
+  values = {**defaults, **inputs}
+  return {
+    name.upper().replace("-", "_"): values[name]
+    for name in (REQUIRED_INPUTS - {"runs-on"}) | DEFAULTED_INPUTS
+  }
 
 
 def default_env() -> dict[str, str]:
-  """review_options が読む env を、workflow の既定値で作る。"""
-  defaults = workflow_defaults()
-  return {
-    "CODE_MODEL": defaults["code-model"],
-    "DOCS_MODEL": defaults["docs-model"],
-    "CODE_EFFORT": defaults["code-effort"],
-    "DOCS_EFFORT": defaults["docs-effort"],
-    "SUBAGENT_MODEL": defaults["subagent-model"],
-    "DOC_DOMAINS": defaults["doc-domains"],
-    "DOC_SUFFIXES": defaults["doc-suffixes"],
-    "COPY_SOURCES": defaults["copy-sources"],
-    "EXCLUDE_PATHS": defaults["exclude-paths"],
-    "REVIEW_POLICY_PATH": defaults["review-policy-path"],
-    "TIMEOUT_MINUTES": defaults["timeout-minutes"],
-  }
+  """workflow の既定値に、必須 input の FIXTURE_INPUTS を足した env を作る。"""
+  return inputs_env(FIXTURE_INPUTS)
 
 
 def output_values(text: str) -> dict[str, str]:

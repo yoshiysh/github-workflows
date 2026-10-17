@@ -6,7 +6,10 @@ import sys
 import unittest
 from pathlib import Path, PurePosixPath
 
-from support import ACTION, default_env, output_values, workflow_defaults
+from support import (
+  ACTION, DEFAULTED_INPUTS, FIXTURE_INPUTS, REQUIRED_INPUTS, default_env, inputs_env,
+  output_values, self_review_inputs, workflow_inputs,
+)
 
 import review_options
 
@@ -102,9 +105,31 @@ PREVIOUS_LOCKFILE = re.compile(
 )
 
 
-class WorkflowDefaultTests(unittest.TestCase):
-  def test_default_exclude_paths_match_the_previous_lockfile_pattern(self) -> None:
-    patterns = json.loads(workflow_defaults()["exclude-paths"])
+class WorkflowInputTests(unittest.TestCase):
+  def test_repository_specific_inputs_are_required_without_a_default(self) -> None:
+    inputs = workflow_inputs()
+    for name in REQUIRED_INPUTS:
+      with self.subTest(name=name):
+        self.assertEqual(inputs[name].get("required"), "true")
+        self.assertNotIn("default", inputs[name])
+
+  def test_operational_inputs_have_a_default(self) -> None:
+    inputs = workflow_inputs()
+    for name in DEFAULTED_INPUTS:
+      with self.subTest(name=name):
+        self.assertIn("default", inputs[name])
+        self.assertNotEqual(inputs[name].get("required"), "true")
+
+  def test_self_review_passes_every_required_input_and_validates(self) -> None:
+    inputs = self_review_inputs()
+    self.assertLessEqual(set(inputs), REQUIRED_INPUTS | DEFAULTED_INPUTS)
+    self.assertEqual(set(inputs) & REQUIRED_INPUTS, REQUIRED_INPUTS)
+    for kind in ("code", "docs"):
+      with self.subTest(kind=kind):
+        review_options.outputs({**inputs_env(inputs), "KIND": kind})
+
+  def test_fixture_lockfile_patterns_match_the_previous_lockfile_regex(self) -> None:
+    patterns = json.loads(FIXTURE_INPUTS["exclude-paths"])
     for path in (
       "Cargo.lock", "yarn.lock", "uv.lock", "poetry.lock", "flake.lock", ".lock",
       "a/b/Gemfile.lock", "web/.lock", "package-lock.json", "web/package-lock.json",
@@ -118,7 +143,7 @@ class WorkflowDefaultTests(unittest.TestCase):
           PREVIOUS_LOCKFILE.search(path) is not None,
         )
 
-  def test_every_workflow_default_passes_validation_for_both_kinds(self) -> None:
+  def test_operational_defaults_with_the_fixture_pass_validation_for_both_kinds(self) -> None:
     for kind in ("code", "docs"):
       with self.subTest(kind=kind):
         review_options.outputs({**default_env(), "KIND": kind})

@@ -128,7 +128,7 @@ class ExcludePathTests(RepoCase):
     )
 
 
-class DefaultSelectionTests(RepoCase):
+class FixtureSelectionTests(RepoCase):
   def changed(self, *paths: str) -> None:
     Path("base.txt").write_text("base\n")
     self.base = self.commit("base.txt")
@@ -143,7 +143,7 @@ class DefaultSelectionTests(RepoCase):
     docs, *_ = self.collect("docs")
     self.assertEqual([row.split("\t", 1)[0] for row in docs], ["README.MD"])
 
-  def test_lockfiles_are_excluded_by_default(self) -> None:
+  def test_fixture_lockfile_patterns_exclude_lockfiles(self) -> None:
     self.changed("Cargo.lock", "web/package-lock.json", "web/pnpm-lock.yaml", "main.py")
 
     rows, excluded, *_ = self.collect()

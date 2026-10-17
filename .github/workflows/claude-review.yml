@@ -31,31 +31,34 @@ on:
         default: claude-sonnet-5-5
       doc-domains:
         description: >-
-          JSON array of documentation hostnames added to the shared WebFetch allowlist, such as
-          '["docs.python.org"]'.
+          Required JSON array of documentation hostnames added to the shared WebFetch allowlist,
+          such as '["docs.example.com"]'; '[]' adds none.
         type: string
-        default: '[]'
+        required: true
       doc-suffixes:
-        description: JSON array of lowercase file suffixes reviewed by the docs job.
+        description: >-
+          Required JSON array of lowercase file suffixes reviewed by the docs job; '[]' sends
+          every file to the code job.
         type: string
-        default: '[".md",".markdown",".mdx"]'
+        required: true
       copy-sources:
         description: >-
           JSON array of groups, each {"suffixes": [...], "ignore": [...]}: the file suffixes
           compared for copies.tsv and the line prefixes, such as that language's comments and
-          imports, ignored in those files. A suffix may appear in only one group.
+          imports, ignored in those files. Required; a suffix may appear in only one group, and
+          '[]' leaves copies.tsv empty.
         type: string
-        default: '[{"suffixes":[".rs"],"ignore":["//","/*","*","#","use ","pub use "]},{"suffixes":[".py"],"ignore":["#","import ","from "]},{"suffixes":[".sh"],"ignore":["#"]},{"suffixes":[".js",".mjs",".cjs",".ts",".mts",".cts"],"ignore":["//","/*","*","#!","import ","} from ","export * ","export {"]}]'
+        required: true
       exclude-paths:
         description: >-
-          JSON array of repository-relative glob patterns using *, ? and ** that exclude paths
-          from review. A value replaces the default lockfile patterns.
+          Required JSON array of repository-relative glob patterns using *, ? and ** that
+          exclude paths from review; '[]' excludes none.
         type: string
-        default: '["**/*.lock","**/package-lock.json","**/pnpm-lock.yaml"]'
+        required: true
       review-policy-path:
-        description: Repository-relative path of the review policy read from the base branch.
+        description: Required repository-relative path of the review policy read from the base branch.
         type: string
-        default: REVIEW.md
+        required: true
       timeout-minutes:
         description: Job timeout in minutes.
         type: number
