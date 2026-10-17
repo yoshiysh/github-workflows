@@ -135,10 +135,7 @@ class FixtureSelectionTests(RepoCase):
   def changed(self, *paths: str) -> None:
     Path("base.txt").write_text("base\n")
     self.base = self.commit("base.txt")
-    for path in paths:
-      Path(path).parent.mkdir(parents=True, exist_ok=True)
-      Path(path).write_text("changed\n")
-    self.commit(*paths)
+    self.commit(*self.write({path: "changed\n" for path in paths}))
 
   def test_uppercase_markdown_suffix_goes_to_the_docs_job(self) -> None:
     self.changed("README.MD", "main.py")

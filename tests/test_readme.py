@@ -2,7 +2,7 @@ import json
 import re
 import unittest
 
-from support import DEFAULTED_INPUTS, REQUIRED_INPUTS, ROOT, inputs_env
+from support import DEFAULTED_INPUTS, REQUIRED_INPUTS, ROOT, inputs_env, scalar
 
 import review_options
 
@@ -36,12 +36,6 @@ def blocks(language: str) -> list[str]:
   return [body for name, body in FENCE.findall(README.read_text(encoding="utf-8")) if name == language]
 
 
-def unquote(text: str) -> str:
-  if text.startswith("'") and text.endswith("'"):
-    return text[1:-1].replace("''", "'")
-  return text
-
-
 class ReadmeExampleTests(unittest.TestCase):
   def test_every_with_example_passes_validation(self) -> None:
     examples = []
@@ -55,7 +49,7 @@ class ReadmeExampleTests(unittest.TestCase):
       for line in lines[start + 1:]:
         if len(line) - len(line.lstrip()) != indent or not (match := WITH_VALUE.match(line)):
           break
-        values[match.group(1)] = unquote(match.group(2))
+        values[match.group(1)] = scalar(match.group(2))
       examples.append(values)
     self.assertGreaterEqual(len(examples), 3)
     for values in examples:

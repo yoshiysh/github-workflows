@@ -22,10 +22,10 @@
 
 ## 観点
 
-- **安全境界**：caller の入力は `action.yml` の最初の step で `review_options.py` が検査し、検査済みの output だけが prepare と Claude に届く。次の変更は境界を崩す。
-  - caller の input（`inputs.*`）を検証 step 以外から直接読む
+- **安全境界**：caller が自由に決められる入力（モデル・effort・文書ホスト・拡張子・パスなど）は `action.yml` の最初の step で `review_options.py` が検査し、検査済みの output だけが prepare と Claude に届く。`kind`（workflow の matrix が固定し、`review_options.py` と `prepare.py` も検査する）、Secret（`claude_code_oauth_token`・`github_token`）、GitHub が step の前に読む `runs-on`・`timeout-minutes` は対象外。次の変更は境界を崩す。
+  - caller が自由に決められる input を検証 step 以外から直接読む
   - `${{ }}` を `run:` のスクリプトへ直接展開する（値は `env:` 経由で渡す）
-  - 値を選ぶ `&&` / `||` の式で、空や不正な値を別の値に黙って置き換える
+  - caller が決めた値の空や不正を、`&&` / `||` の式で別の値に黙って置き換える
   - caller の入力で、Claude に許すツールの種類や書き込み先を広げる（caller が足せるのは検査済みの文書ホストだけ）
   - caller の値を Git の attributes や設定へ書くとき、検査済みの閉集合（`review_options.py` の `DIFF_DRIVERS`）以外の値や、caller の正規表現を通す
   - 方針ファイルや制御ファイル（`prepare.py` の `CONTROL_DIR`・`CONTROL_FILES`）を base ブランチ以外から読む、または PR 側の版を有効な設定として残す
