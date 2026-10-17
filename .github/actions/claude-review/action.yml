@@ -5,6 +5,15 @@ inputs:
   kind:
     description: Review kind selected by the shared reusable workflow matrix.
     required: true
+  code_model:
+    description: Claude model for the code review, chosen by the reusable workflow.
+    required: true
+  docs_model:
+    description: Claude model for the Markdown review, chosen by the reusable workflow.
+    required: true
+  subagent_model:
+    description: Claude model for confirming agents, chosen by the reusable workflow.
+    required: true
   claude_code_oauth_token:
     description: Claude Code OAuth token supplied by the calling repository.
     required: true
@@ -15,16 +24,21 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Validate review kind and Claude credentials
+    - name: Validate review kind and model names
+      id: models
       shell: bash
       env:
         KIND: ${{ inputs.kind }}
+        CODE_MODEL: ${{ inputs.code_model }}
+        DOCS_MODEL: ${{ inputs.docs_model }}
+        SUBAGENT_MODEL: ${{ inputs.subagent_model }}
+      run: python "$GITHUB_ACTION_PATH/models.py"
+
+    - name: Validate Claude credentials
+      shell: bash
+      env:
         CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
       run: |
-        case "$KIND" in
-          code|docs) ;;
-          *) echo "::error::Unsupported review kind: $KIND"; exit 1 ;;
-        esac
         if [ -z "${CLAUDE_CODE_OAUTH_TOKEN}" ]; then
           echo "::error::Pass the CLAUDE_CODE_OAUTH_TOKEN secret to the reusable workflow."
           exit 1
@@ -53,7 +67,7 @@ runs:
       uses: anthropics/claude-code-action@374f254f5efaf968abfe15d399fd90972e8138b9 # v1.0.251
       env:
         CLAUDE_CODE_EFFORT_LEVEL: ${{ inputs.kind == 'code' && 'high' || 'xhigh' }}
-        CLAUDE_CODE_SUBAGENT_MODEL: claude-sonnet-5-5
+        CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.models.outputs.subagent_model }}
         CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
       with:
         claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
@@ -109,7 +123,7 @@ runs:
           documentation at ${{ steps.prepare.outputs.doc_domains }}. Write only the
           summary path above. Tell every Agent you launch the same restrictions.
         claude_args: |
-          --model ${{ inputs.kind == 'code' && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
+          --model ${{ steps.models.outputs.model }}
           --permission-mode dontAsk
           --settings '{"disableAllHooks": true}'
           --strict-mcp-config

@@ -9,6 +9,18 @@ on:
           array of labels such as '["self-hosted","linux"]', or a group/labels object.
         type: string
         required: true
+      code-model:
+        description: Claude model for the code review.
+        type: string
+        default: claude-opus-5-5
+      docs-model:
+        description: Claude model for the Markdown review.
+        type: string
+        default: claude-sonnet-5-5
+      subagent-model:
+        description: Claude model for the confirming agents in both reviews.
+        type: string
+        default: claude-sonnet-5-5
     secrets:
       claude_code_oauth_token:
         description: Claude Code OAuth token owned by the calling repository.
@@ -58,5 +70,8 @@ jobs:
           GIT_CONFIG_VALUE_0: ""
         with:
           kind: ${{ matrix.kind }}
+          code_model: ${{ inputs.code-model }}
+          docs_model: ${{ inputs.docs-model }}
+          subagent_model: ${{ inputs.subagent-model }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}
