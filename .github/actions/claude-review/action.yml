@@ -50,7 +50,7 @@ runs:
     - name: Review the PR
       id: review
       if: steps.prepare.outputs.count != '0'
-      uses: anthropics/claude-code-action@374f254f5efaf968abfe15d399fd90972e8138b9 # v1.0.251
+      uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
       env:
         CLAUDE_CODE_EFFORT_LEVEL: ${{ inputs.kind == 'code' && 'high' || 'xhigh' }}
         CLAUDE_CODE_SUBAGENT_MODEL: claude-sonnet-5-5
