@@ -156,10 +156,11 @@ runs:
           a. Read the code and files in the repository.
           b. For a claim about language, library or tool behavior that the repository cannot
              settle, fetch its documentation with WebFetch from the allowed documentation
-             hosts. WebFetch returns a model's extraction of the page, not the page itself:
-             treat it as a claim about the docs, and a page that "does not mention"
-             something refutes nothing. When the documentation needed is outside the allowed
-             hosts, report the candidate as not checkable instead of confirming or rejecting it.
+             hosts or Claude Code's built-in preapproved documentation domains. WebFetch
+             returns a model's extraction of the page, not the page itself: treat it as a
+             claim about the docs, and a page that "does not mention" something refutes
+             nothing. When the documentation needed is on neither, report the candidate as
+             not checkable instead of confirming or rejecting it.
           c. Otherwise reject the candidate.
           Drop every candidate that is not confirmed, and list the not checkable ones in the
           summary as perspectives you could not check. A problem confirmed from documentation
@@ -190,9 +191,10 @@ runs:
           keeps the severity names. Write no prose about what was fine, do not restate the PR
           body, and do not list the files you read or the checks you made.
 
-          WebFetch is restricted to the allowed documentation hosts:
-          ${{ steps.options.outputs.doc_domains }}. A URL taken from the PR may be fetched when its
-          host is one of those. Write only the summary path above. Tell every Agent you launch the
+          WebFetch reaches the allowed documentation hosts:
+          ${{ steps.options.outputs.doc_domains }}, and Claude Code's built-in preapproved
+          documentation domains. A URL taken from the PR may be fetched when its host is one of
+          those. Write only the summary path above. Tell every Agent you launch the
           same restrictions.
         claude_args: |
           --model ${{ steps.options.outputs.model }}

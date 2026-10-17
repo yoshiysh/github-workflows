@@ -10,7 +10,7 @@ The caller controls when the reusable workflow starts. Its optional `paths` filt
 
 The calling repository owns its review policy file (`review-policy-path`). The shared action reads that file from the pull request's base branch, so the policy that applies does not change with the pull request's contents. A pull request that changes the caller workflow itself, including its inputs, still needs its own review.
 
-Claude's tools are fixed by the action's `claude_args` and include no shell; the pull request title and body reach it as a prepared file. Callers can add checked documentation hostnames to Claude's WebFetch allowlist, but cannot add tool kinds or widen any other permission. Every caller-supplied value is checked by the action's first step before it reaches the review scripts or Claude's arguments; a value that fails the check stops the job.
+Claude's tools are fixed by the action's `claude_args` and include no shell; the pull request title and body reach it as a prepared file. WebFetch reaches the allowed documentation hosts and Claude Code's built-in preapproved documentation domains. Callers can add checked documentation hostnames to the allowlist, but cannot add tool kinds or widen any other permission. Every caller-supplied value is checked by the action's first step before it reaches the review scripts or Claude's arguments; a value that fails the check stops the job.
 
 ### Caller workflow
 
