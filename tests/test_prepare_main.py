@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import subprocess
 import sys
@@ -38,8 +39,13 @@ class PrepareMainTests(GitRepoCase):
       "EXCLUDE_PATHS": settings["exclude_paths"],
       "REVIEW_POLICY_PATH": settings["review_policy_path"],
     }
-    with mock.patch.dict(os.environ, env), mock.patch.object(prepare, "prior_reviews", return_value=""):
+    with (
+      mock.patch.dict(os.environ, env),
+      mock.patch.object(prepare, "prior_reviews", return_value=""),
+      mock.patch.object(prepare, "pr_description", return_value="description\n") as description,
+    ):
       prepare.main()
+    self.description = description
     return self.root / ".claude-review/code"
 
   def test_review_policy_path_reads_that_file_from_the_base_branch(self) -> None:
@@ -50,6 +56,16 @@ class PrepareMainTests(GitRepoCase):
     out = self.run_main(head, REVIEW_POLICY_PATH="docs/policy.md")
 
     self.assertEqual((out / "review-policy.md").read_text(encoding="utf-8"), "base policy\n")
+
+  def test_pr_title_and_body_are_written_for_the_reviewed_pr(self) -> None:
+    self.commit(*self.write({"a.py": "base\n"}))
+    git("checkout", "--quiet", "-b", "feature")
+    head = self.commit(*self.write({"a.py": "changed\n"}))
+
+    out = self.run_main(head)
+
+    self.description.assert_called_once_with("owner/repo", "1")
+    self.assertEqual((out / "pr.md").read_text(), "description\n")
 
   def test_changed_control_files_are_snapshotted_and_listed(self) -> None:
     self.commit(*self.write({".claude/x": "base rule\n", "CLAUDE.md": "base memory\n"}))
@@ -71,6 +87,23 @@ class PrepareMainTests(GitRepoCase):
         self.assertTrue(
           any(path == line or (line.endswith("/") and path.startswith(line)) for line in listed)
         )
+
+
+class PrDescriptionTests(unittest.TestCase):
+  def describe(self, pull: dict) -> tuple[str, tuple[str, ...]]:
+    with mock.patch.object(prepare, "run", return_value=json.dumps(pull)) as run:
+      text = prepare.pr_description("owner/repo", "7")
+    return text, run.call_args.args
+
+  def test_title_and_whole_body_are_kept(self) -> None:
+    body = "line one\n\n" + "x" * 500
+    text, args = self.describe({"title": "Fix it", "body": body})
+    self.assertEqual(args, ("gh", "api", "repos/owner/repo/pulls/7"))
+    self.assertEqual(text, f"タイトル: Fix it\n\n本文:\n{body}\n")
+
+  def test_missing_body_is_marked(self) -> None:
+    text, _ = self.describe({"title": "Fix it", "body": None})
+    self.assertEqual(text, "タイトル: Fix it\n\n本文:\n(無い)\n")
 
 
 class GitIsolationTests(GitRepoCase):
