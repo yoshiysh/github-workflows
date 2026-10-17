@@ -322,6 +322,12 @@ def prior_reviews(repo: str, pr: str, paths: set[str], header: str) -> str:
   return "\n".join(out) + "\n"
 
 
+def pr_description(repo: str, pr: str) -> str:
+  """PR のタイトルと本文を、切り詰めずに文章にする。"""
+  pull = json.loads(run("gh", "api", f"repos/{repo}/pulls/{pr}"))
+  return f"タイトル: {pull['title']}\n\n本文:\n{pull['body'] or '(無い)'}\n"
+
+
 def json_values(text: str) -> list:
   """--paginate がページごとに出す JSON を順に読み、ページの一覧にする。"""
   decoder = json.JSONDecoder()
@@ -594,6 +600,7 @@ def main() -> None:
   (out / "symlinks.txt").write_text("".join(f"{s}\n" for s in symlinks))
   paths = {r.split("\t", 1)[0] for r in rows}
   if rows:
+    (out / "pr.md").write_text(pr_description(env["REPO"], env["PR"]))
     (out / "prior.md").write_text(
       prior_reviews(env["REPO"], env["PR"], paths, env["HEADER"])
     )

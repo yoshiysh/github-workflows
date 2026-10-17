@@ -10,7 +10,7 @@ The caller controls when the reusable workflow starts. Its optional `paths` filt
 
 The calling repository owns its review policy file (`review-policy-path`). The shared action reads that file from the pull request's base branch, so the policy that applies does not change with the pull request's contents. A pull request that changes the caller workflow itself, including its inputs, still needs its own review.
 
-Callers can add checked documentation hostnames to Claude's WebFetch allowlist, but cannot add tool kinds or widen any other permission. Every caller-supplied value is checked by the action's first step before it reaches the review scripts or Claude's arguments; a value that fails the check stops the job.
+Claude's tools are fixed by the action's `claude_args` and include no shell; the pull request title and body reach it as a prepared file. WebFetch reaches the allowed documentation hosts and Claude Code's built-in preapproved documentation domains. Callers can add checked documentation hostnames to the allowlist, but cannot add tool kinds or widen any other permission. Every caller-supplied value is checked by the action's first step before it reaches the review scripts or Claude's arguments; a value that fails the check stops the job.
 
 ### Caller workflow
 
@@ -55,6 +55,8 @@ paths:
 No `kind` input is needed. If this repository is the caller, use `uses: $/.github/workflows/claude-review.yml` to select the workflow from the caller's current commit. This repository's own review policy is its root `REVIEW.md`.
 
 A job runs only for a `pull_request` event, and only when that event was triggered by a user rather than a bot (for `synchronize`, the user who pushed; for `ready_for_review`, the user who marked it ready), the pull request is not a draft, and its head branch is in the calling repository. Pull requests from forks are skipped and get no review.
+
+Each job posts its summary as a new pull request comment, so a re-run (for example on `synchronize`) adds another one. After posting, the job hides that kind's earlier summaries and failure notices written by the same token as outdated, leaving other comments alone. A hide that fails is reported as a workflow warning and does not fail the job. When Claude writes no summary, the job posts a failure notice, fails, and leaves the earlier summaries visible.
 
 ### Runner
 

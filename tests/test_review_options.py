@@ -403,6 +403,22 @@ class ActionWiringTests(unittest.TestCase):
       used = set(re.findall(r"inputs(?:\.|\[\s*['\"])([A-Za-z0-9_-]+)", step))
       self.assertLessEqual(used, allowed_elsewhere, step.splitlines()[0])
 
+  def test_claude_has_no_shell_and_every_allowed_tool_is_available(self) -> None:
+    text = ACTION.read_text(encoding="utf-8")
+    flags = dict(
+      re.findall(r'^          --(tools|disallowedTools|allowedTools) "([^"]*)"$', text, re.MULTILINE)
+    )
+    tools = set(flags["tools"].split(","))
+    shells = {"Bash", "Monitor"}
+    self.assertFalse(tools & shells)
+    self.assertLessEqual(shells, set(flags["disallowedTools"].split(",")))
+    rules = re.sub(r"\$\{\{[^}]*\}\}", "", flags["allowedTools"]).split(",")
+    allowed = {rule.split("(", 1)[0] for rule in rules if rule}
+    self.assertFalse(allowed & shells)
+    self.assertLessEqual({tool for tool in allowed if not tool.startswith("mcp__")}, tools)
+    # Write は summary.md を作り（Edit の allow 規則が Write にも効く）、ToolSearch は遅延読み込みの MCP ツールを読み込む。
+    self.assertLessEqual({"WebFetch", "Write", "ToolSearch"}, tools)
+
 
 if __name__ == "__main__":
   unittest.main()

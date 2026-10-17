@@ -17,21 +17,11 @@ test data, an interface's signature, or a line two callers must both write is no
 Follow the calling repository's review policy (review-policy.md) and the base-branch rules it
 names. If the review policy defines invariants, check the change against them.
 
-Give each confirming Agent the following procedure verbatim. It confirms or rejects the candidate
-in this order:
-a. Read the code and files in the repository.
-b. For a claim about language, library or tool behavior that the repository cannot settle, fetch
-   the official documentation with WebFetch from the allowed documentation hosts, at the page for
-   the version the repository pins. Take the version from where the repository pins it, or from
-   where the review policy says. Use the site's versioned path when it has one. When the site has
-   no versioned path, or the versioned path fails or lands on the latest page, use the latest page
-   and say so. WebFetch returns a model's extraction of the page, not the page itself: treat it
-   as a claim about the docs, and a page that "does not mention" something refutes nothing.
-   When the documentation needed is outside the allowed hosts, report the candidate as not
-   checkable instead of confirming or rejecting it; the reviewer then drops it from the comments
-   and lists it in the summary as a perspective it could not check.
-c. Otherwise reject the candidate.
-A problem confirmed from documentation keeps the fetched URL for its comment.
+Add this to step b of the confirming procedure you give each Agent: fetch the page for the
+version the repository pins. Take the version from where the repository pins it, or from where
+the review policy says. Use the site's versioned path when it has one. When the site has no
+versioned path, or the versioned path fails or lands on the latest page, use the latest page and
+say so.
 
 When the fix replaces the lines a comment is on, give it as a suggestion block
 (```suggestion ... ```), written so that applying it leaves working code; otherwise say what to
