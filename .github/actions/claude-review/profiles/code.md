@@ -14,9 +14,8 @@ Use copies.tsv as leads, not as a complete detector: it finds exact repeated sou
 Judge each row: a line that is a copy of a check, a conversion or a helper is a problem; the same
 test data, a trait's signature, or a line two callers must both write is not.
 
-Follow the calling repository's REVIEW.md and the base-branch rules it names. For financial
-calculations, check units, denominator conditions, time-series look-ahead, timeouts, and any other
-financial invariants required by REVIEW.md.
+Follow the calling repository's REVIEW.md and the base-branch rules it names, including the domain
+invariants it defines.
 
 Give each confirming Agent the following procedure verbatim. It confirms or rejects the candidate
 in this order:
@@ -26,10 +25,11 @@ b. For a claim about language, library or tool behavior that the repository cann
    from where the code pins it: toolchain files, lockfiles, version files, or where the calling
    repository's REVIEW.md says. Use the versioned path the site offers, which is often
    major.minor (doc.rust-lang.org/1.99.0/, docs.rs/serde/1.0/, docs.python.org/3.14/) rather
-   than the full version. When the site has no versioned path, or the versioned path fails or
-   lands on the latest page, use the latest page and say so. WebFetch returns a model's
-   extraction of the page, not the page itself: treat it as a claim about the docs, and a page
-   that "does not mention" something refutes nothing.
+   than the full version. For Node.js, take the major from package.json engines or the workflow's
+   node-version and use nodejs.org/docs/latest-v<major>.x/api/. When the site has no versioned
+   path, or the versioned path fails or lands on the latest page, use the latest page and say so.
+   WebFetch returns a model's extraction of the page, not the page itself: treat it as a claim
+   about the docs, and a page that "does not mention" something refutes nothing.
 c. Otherwise reject the candidate.
 A problem confirmed from documentation keeps the fetched URL for its comment.
 

@@ -20,8 +20,30 @@ LOCKFILE = re.compile(
 SUBMODULE_MODE = "160000"
 SYMLINK_MODE = "120000"
 DOC_SUFFIXES = (".md", ".markdown", ".mdx")
-SOURCE_SUFFIXES = (".rs", ".py", ".sh")
-NOT_A_COPY = ("//", "#", "*", "use ", "pub use ", "import ", "from ")
+SOURCE_SUFFIXES = (".rs", ".py", ".sh", ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")
+NOT_A_COPY = (
+  "//", "/*", "#", "*", "use ", "pub use ", "import ", "from ", "} from ", "export * ",
+  "export {",
+)
+DOC_DOMAINS = (
+  "docs.github.com",
+  "docs.rs",
+  "doc.rust-lang.org",
+  "rust-lang.github.io",
+  "docs.python.org",
+  "pandas.pydata.org",
+  "python-jsonschema.readthedocs.io",
+  "ranaroussi.github.io",
+  "docs.pytest.org",
+  "docs.astral.sh",
+  "mypy.readthedocs.io",
+  "nodejs.org",
+  "code.claude.com",
+  "platform.claude.com",
+  "developers.openai.com",
+  "learn.chatgpt.com",
+  "developers.notion.com",
+)
 COPY_MIN_LENGTH = 40
 COPY_MAX_PLACES = 12
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
@@ -252,6 +274,13 @@ def json_values(text: str) -> list:
     pages.append(page)
 
 
+def doc_domain_outputs() -> str:
+  """DOC_DOMAINS を、プロンプトの列挙と --allowedTools の WebFetch 許可に展開した GITHUB_OUTPUT 行にする。"""
+  prose = f"{', '.join(DOC_DOMAINS[:-1])}, and {DOC_DOMAINS[-1]}"
+  tools = ",".join(f"WebFetch(domain:{domain})" for domain in DOC_DOMAINS)
+  return f"doc_domains={prose}\nwebfetch_tools={tools}\n"
+
+
 def short(text: str, limit: int = 200) -> str:
   """改行を詰めて limit 文字に切る。"""
   text = " ".join((text or "").split())
@@ -442,6 +471,7 @@ def main() -> None:
     )
   with open(env["GITHUB_OUTPUT"], "a") as output:
     output.write(f"count={len(rows)}\n")
+    output.write(doc_domain_outputs())
   print(
     f"kind={kind} files={len(rows)} excluded={len(excluded)} copies={len(repeated)}"
   )

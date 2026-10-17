@@ -2,6 +2,13 @@ name: Reusable Claude Review
 
 on:
   workflow_call:
+    inputs:
+      runs-on:
+        description: >-
+          JSON for the job's runs-on: a quoted label such as '"ubuntu-latest"' or an array of
+          labels.
+        type: string
+        default: '["self-hosted","linux"]'
     secrets:
       claude_code_oauth_token:
         description: Claude Code OAuth token owned by the calling repository.
@@ -19,7 +26,7 @@ jobs:
           github.event.pull_request.draft == false &&
           github.event.sender.type == 'User' &&
           github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: [self-hosted, linux]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 60
     permissions:
       contents: read

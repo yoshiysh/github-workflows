@@ -106,17 +106,14 @@ runs:
           gh pr view ${{ github.event.pull_request.number }} --json title,body
 
           Bash allows only that gh pr view command. WebFetch is restricted to official
-          documentation at docs.github.com, docs.rs, doc.rust-lang.org, rust-lang.github.io,
-          docs.python.org, pandas.pydata.org, python-jsonschema.readthedocs.io,
-          ranaroussi.github.io, docs.pytest.org, docs.astral.sh, mypy.readthedocs.io,
-          code.claude.com, platform.claude.com, and developers.notion.com. Write only the
+          documentation at ${{ steps.prepare.outputs.doc_domains }}. Write only the
           summary path above. Tell every Agent you launch the same restrictions.
         claude_args: |
           --model ${{ inputs.kind == 'code' && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
           --permission-mode dontAsk
           --settings '{"disableAllHooks": true}'
           --strict-mcp-config
-          --allowedTools "Read,Glob,Grep,Agent,Edit(./.claude-review/${{ inputs.kind }}/summary.md),Edit(/${{ github.workspace }}/.claude-review/${{ inputs.kind }}/summary.md),WebFetch(domain:docs.github.com),WebFetch(domain:docs.rs),WebFetch(domain:doc.rust-lang.org),WebFetch(domain:rust-lang.github.io),WebFetch(domain:docs.python.org),WebFetch(domain:pandas.pydata.org),WebFetch(domain:python-jsonschema.readthedocs.io),WebFetch(domain:ranaroussi.github.io),WebFetch(domain:docs.pytest.org),WebFetch(domain:docs.astral.sh),WebFetch(domain:mypy.readthedocs.io),WebFetch(domain:code.claude.com),WebFetch(domain:platform.claude.com),WebFetch(domain:developers.notion.com),Bash(gh pr view:*),mcp__github_inline_comment__create_inline_comment"
+          --allowedTools "Read,Glob,Grep,Agent,Edit(./.claude-review/${{ inputs.kind }}/summary.md),Edit(/${{ github.workspace }}/.claude-review/${{ inputs.kind }}/summary.md),${{ steps.prepare.outputs.webfetch_tools }},Bash(gh pr view:*),mcp__github_inline_comment__create_inline_comment"
 
     - name: Post concise review summary and coverage
       if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.prepare.outputs.count != '0' }}

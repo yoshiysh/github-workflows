@@ -45,20 +45,38 @@ paths:
 
 No `kind` input is needed. If this repository is the caller, use `uses: $/.github/workflows/claude-review.yml` to select the workflow from the caller's current commit.
 
+The job runs only for non-draft pull requests opened by a user from a branch in the calling repository. Pull requests from forks are skipped and get no review.
+
+### Runner
+
+The `runs-on` input selects the runner. Its value is JSON passed through `fromJSON` to the job's `runs-on`: a quoted label string, an array of labels, or a `group` / `labels` object such as `'{"group":"reviewers"}'`. When omitted, the job uses the self-hosted Linux runner labels in the workflow's `default:`.
+
+A public caller, or any caller without a self-hosted runner, passes a GitHub-hosted label:
+
+```yaml
+jobs:
+  review:
+    uses: yoshiysh/github-workflows/.github/workflows/claude-review.yml@0123456789abcdef0123456789abcdef01234567
+    with:
+      runs-on: '"ubuntu-latest"'
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
+`'["ubuntu-latest"]'` is equivalent. A bare `ubuntu-latest` without the inner JSON quotes is not valid JSON and fails. A public repository should not route pull request code to self-hosted runners; this repository's own `claude-review-self.yml` uses `ubuntu-latest` for that reason.
+
 ### Repository setup
 
-Before callers can use this private repository:
-
 1. Merge a reviewed change, then pin callers to the full commit SHA of the merged revision. A tag such as `v1` can remain as a convenient moving release alias, but it is not an immutable pin.
-2. In this repository's **Settings → Actions → General → Access**, allow the intended private caller repositories to use these workflows and actions.
+2. In each caller repository, allow actions and reusable workflows in **Settings → Actions → General**, and, if the caller restricts which ones may run, allow `yoshiysh/github-workflows`. This repository is public, so it needs no **Access** setting for callers.
 3. In each caller repository, add `CLAUDE_CODE_OAUTH_TOKEN` as a repository secret and grant the permissions shown above.
-4. Use a self-hosted runner at version 2.336.0 or newer. The shared workflow uses the `$/` self-repository syntax to load its composite action from the exact workflow commit.
+4. A self-hosted runner must be version [2.336.0](https://github.com/actions/runner/releases/tag/v2.336.0) or newer. The shared workflow uses the `$/` self-repository syntax to load its composite action from the exact workflow commit. GitHub maintains and upgrades GitHub-hosted runners.
 
 The shared workflow resolves `.github/actions/claude-review` from its own running commit, so pinning the caller's workflow to a full SHA also pins the composite action and its helper scripts to that same revision.
 
 ## Shared components
 
-- `.github/workflows/claude-review.yml` — reusable workflow with the internal `code` / `docs` matrix. It runs on the caller's self-hosted Linux runner and checks out the caller's repository.
+- `.github/workflows/claude-review.yml` — reusable workflow with the internal `code` / `docs` matrix. It runs on the runner selected by the `runs-on` input and checks out the caller's repository.
 - `.github/actions/claude-review/` — shared action and helper scripts for collecting diffs, prior review context, source-line copies, protected configuration snapshots, and read-coverage reports.
 
 The reusable workflow does not define `pull_request` path filters. Callers own their event triggers and decide which pull requests start the matrix.
