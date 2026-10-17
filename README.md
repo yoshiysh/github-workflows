@@ -12,7 +12,7 @@ The calling repository owns its root `REVIEW.md`. The shared action reads that f
 
 ### Caller workflow
 
-This example starts the shared workflow for the listed pull request events. With no `paths` filter, it can run for code-only, Markdown-only, or mixed changes:
+This example starts the shared workflow on a self-hosted Linux runner for the listed pull request events. With no `paths` filter, it can run for code-only, Markdown-only, or mixed changes:
 
 ```yaml
 name: Claude review
@@ -30,6 +30,8 @@ jobs:
   review:
     # Replace this example hash with the reviewed full commit SHA from github-workflows.
     uses: yoshiysh/github-workflows/.github/workflows/claude-review.yml@0123456789abcdef0123456789abcdef01234567
+    with:
+      runs-on: '["self-hosted","linux"]'
     secrets:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
@@ -49,7 +51,7 @@ The job runs only for non-draft pull requests opened by a user from a branch in 
 
 ### Runner
 
-The `runs-on` input selects the runner. Its value is JSON passed through `fromJSON` to the job's `runs-on`: a quoted label string, an array of labels, or a `group` / `labels` object such as `'{"group":"reviewers"}'`. When omitted, the job uses the self-hosted Linux runner labels in the workflow's `default:`.
+The required `runs-on` input selects the runner; there is no default, so every caller states where the review runs. Its value is JSON passed through `fromJSON` to the job's `runs-on`: a quoted label string, an array of labels such as `'["self-hosted","linux"]'`, or a `group` / `labels` object such as `'{"group":"reviewers"}'`. Existing callers must add `runs-on` when they move their pin to a revision that requires it.
 
 A public caller, or any caller without a self-hosted runner, passes a GitHub-hosted label:
 

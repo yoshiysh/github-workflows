@@ -5,10 +5,10 @@ on:
     inputs:
       runs-on:
         description: >-
-          JSON for the job's runs-on: a quoted label such as '"ubuntu-latest"' or an array of
-          labels.
+          Required JSON for the job's runs-on: a quoted label such as '"ubuntu-latest"', an
+          array of labels such as '["self-hosted","linux"]', or a group/labels object.
         type: string
-        default: '["self-hosted","linux"]'
+        required: true
     secrets:
       claude_code_oauth_token:
         description: Claude Code OAuth token owned by the calling repository.
