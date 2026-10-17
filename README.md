@@ -56,6 +56,8 @@ No `kind` input is needed. If this repository is the caller, use `uses: $/.githu
 
 A job runs only for a `pull_request` event, and only when that event was triggered by a user rather than a bot (for `synchronize`, the user who pushed; for `ready_for_review`, the user who marked it ready), the pull request is not a draft, and its head branch is in the calling repository. Pull requests from forks are skipped and get no review.
 
+Each job posts its summary as a new pull request comment, so a re-run (for example on `synchronize`) adds another one. After posting, the job hides that kind's earlier summaries written by the same token as outdated, leaving other comments alone. A hide that fails is reported as a workflow warning and does not fail the job. When Claude writes no summary, the job posts a failure notice, fails, and leaves the earlier summaries visible.
+
 ### Runner
 
 The required `runs-on` input selects the runner; there is no default, so every caller states where the review runs. Its value is JSON passed through `fromJSON` to the job's `runs-on`: a quoted label string, an array of labels such as `'["self-hosted","linux"]'`, or a `group` / `labels` object such as `'{"group":"reviewers"}'`.

@@ -15,7 +15,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from prepare import FAILURE_MARK
+from prepare import FAILURE_MARK, json_values
 
 NUMBERED_LINE = re.compile(r"^\s*(\d+)[\t\u2192]", re.MULTILINE)
 PR_SNAPSHOT = ".claude-pr"
@@ -29,6 +29,24 @@ TABLE_HEAD = [
   "|---|---|---|---|---|",
 ]
 EXECUTION_COPY = "execution.json"
+COMMENTS_QUERY = """
+query($owner: String!, $name: String!, $n: Int!, $endCursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $n) {
+      comments(first: 100, after: $endCursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes { id isMinimized viewerDidAuthor body }
+      }
+    }
+  }
+}
+"""
+MINIMIZE_MUTATION = """
+mutation($id: ID!) {
+  minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) { minimizedComment { isMinimized } }
+}
+"""
+MINIMIZE_ERRORS = (subprocess.CalledProcessError, OSError, ValueError, KeyError, TypeError)
 
 
 @dataclass(frozen=True)
@@ -243,6 +261,52 @@ def gh(*args: str) -> None:
   subprocess.run(["gh", *args], check=True)
 
 
+def gh_output(*args: str) -> str:
+  """gh を実行して標準出力を返す。失敗したら CalledProcessError を投げる。"""
+  return subprocess.run(
+    ["gh", *args], capture_output=True, text=True, check=True
+  ).stdout
+
+
+def earlier_summaries(repo: str, pr: str, header: str) -> list[str]:
+  """この token が書き、まだ畳んでいない、この種類の総括の node ID を返す。"""
+  owner, name = repo.split("/", 1)
+  pages = json_values(
+    gh_output(
+      "api", "graphql", "--paginate",
+      "-f", f"owner={owner}", "-f", f"name={name}", "-F", f"n={pr}",
+      "-f", f"query={COMMENTS_QUERY}",
+    )
+  )
+  return [
+    node["id"]
+    for page in pages
+    for node in page["data"]["repository"]["pullRequest"]["comments"]["nodes"]
+    if node
+    and node["viewerDidAuthor"]
+    and not node["isMinimized"]
+    and node["body"].lstrip().startswith(header)
+  ]
+
+
+def warn(message: str, error: Exception) -> None:
+  """workflow command は 1 行で読まれるので、gh の標準エラーを 1 行に詰めて警告にする。"""
+  detail = " ".join(str(getattr(error, "stderr", None) or error).split())
+  print(f"::warning::{message}: {detail}")
+
+
+def minimize(ids: list[str]) -> None:
+  """総括を OUTDATED として畳む。失敗は警告に留め、新しい総括の投稿を失敗にしない。"""
+  done = 0
+  for comment_id in ids:
+    try:
+      gh_output("api", "graphql", "-f", f"id={comment_id}", "-f", f"query={MINIMIZE_MUTATION}")
+      done += 1
+    except MINIMIZE_ERRORS as error:
+      warn(f"前回の総括 {comment_id} を畳めなかった", error)
+  print(f"前回の総括を {done}/{len(ids)} 件畳んだ")
+
+
 def write_step_summary(
   env: os._Environ[str], result: dict, note: list[str], files: list[FileCoverage]
 ) -> None:
@@ -265,7 +329,10 @@ def write_step_summary(
 
 
 def post(env: os._Environ[str], out: Path, note: list[str]) -> None:
-  """総括に簡潔な読取件数と詳細へのリンクを付けて投稿する。"""
+  """総括に簡潔な読取件数と詳細へのリンクを付けて投稿し、この種類の前回までの総括を畳む。
+
+  総括が書かれなかったときは畳まない。失敗の知らせで最後の総括を隠さないため。
+  """
   body_file = out / "comment.md"
   written = out / "summary.md"
   if not written.exists() or not written.read_text().strip():
@@ -279,7 +346,13 @@ def post(env: os._Environ[str], out: Path, note: list[str]) -> None:
   if len(text) > COMMENT_LIMIT:
     text = text[:COMMENT_LIMIT] + "\n\n(長すぎるため切り詰めた)"
   body_file.write_text(f"{env['HEADER']}\n\n{text}\n\n" + "\n".join(note) + "\n")
+  try:
+    earlier = earlier_summaries(env["REPO"], env["PR"], env["HEADER"])
+  except MINIMIZE_ERRORS as error:
+    warn("前回の総括を探せなかった", error)
+    earlier = []
   gh("pr", "comment", env["PR"], "--repo", env["REPO"], "--body-file", str(body_file))
+  minimize(earlier)
 
 
 def main() -> None:
