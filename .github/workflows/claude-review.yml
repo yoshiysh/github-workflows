@@ -35,10 +35,12 @@ on:
           such as '["docs.example.com"]'; '[]' adds none.
         type: string
         required: true
-      doc-suffixes:
+      doc-sources:
         description: >-
-          Required JSON array of lowercase file suffixes reviewed by the docs job; '[]' sends
-          every file to the code job.
+          Required JSON array of groups, each {"suffixes": [...], "diff-driver": ...}: the
+          lowercase file suffixes reviewed by the docs job, and a built-in Git diff driver name
+          whose sections the diff includes whole, or null for a plain diff. A suffix may appear
+          in only one group and not in copy-sources; '[]' sends every file to the code job.
         type: string
         required: true
       copy-sources:
@@ -118,7 +120,7 @@ jobs:
           docs_effort: ${{ inputs.docs-effort }}
           subagent_model: ${{ inputs.subagent-model }}
           doc_domains: ${{ inputs.doc-domains }}
-          doc_suffixes: ${{ inputs.doc-suffixes }}
+          doc_sources: ${{ inputs.doc-sources }}
           copy_sources: ${{ inputs.copy-sources }}
           exclude_paths: ${{ inputs.exclude-paths }}
           review_policy_path: ${{ inputs.review-policy-path }}

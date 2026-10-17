@@ -216,14 +216,43 @@ class ReviewSettingTests(unittest.TestCase):
     env = {**default_env(), "KIND": "code", "EXCLUDE_PATHS": '["vendor/**"]'}
     lines = output_values(review_options.outputs(env))
     passed = {name: lines[name.lower()] for name in (
-      "DOC_SUFFIXES", "COPY_SOURCES", "EXCLUDE_PATHS", "REVIEW_POLICY_PATH",
+      "DOC_SOURCES", "COPY_SOURCES", "EXCLUDE_PATHS", "REVIEW_POLICY_PATH",
     )}
     self.assertEqual(review_options.review_settings(passed), review_options.review_settings(env))
 
-  def test_suffixes(self) -> None:
-    self.assertEqual(self.settings(DOC_SUFFIXES='[".rst",".md",".md"]')["doc_suffixes"], [".rst", ".md"])
-    for value in ('["md"]', '[".MD"]', '[".m d"]', '["*.md"]', '[".md/"]', '[""]'):
-      self.rejects("DOC_SUFFIXES", value)
+  def test_doc_sources(self) -> None:
+    value = '[{"suffixes":[".md",".markdown",".md"],"diff-driver":"markdown"},{"suffixes":[".rst"],"diff-driver":null}]'
+    self.assertEqual(
+      self.settings(DOC_SOURCES=value)["doc_sources"],
+      [
+        {"suffixes": [".md", ".markdown"], "diff-driver": "markdown"},
+        {"suffixes": [".rst"], "diff-driver": None},
+      ],
+    )
+    self.assertEqual(self.settings(DOC_SOURCES="[]")["doc_sources"], [])
+    for driver in sorted(review_options.DIFF_DRIVERS):
+      with self.subTest(driver=driver):
+        groups = [{"suffixes": [".doc"], "diff-driver": driver}]
+        self.assertEqual(self.settings(DOC_SOURCES=json.dumps(groups))["doc_sources"], groups)
+    for value in (
+      "", "{}", '[".md"]', '[{"suffixes":[".md"]}]', '[{"diff-driver":"markdown"}]',
+      '[{"suffixes":[".md"],"diff-driver":"markdown","extra":1}]',
+      '[{"suffixes":".md","diff-driver":"markdown"}]', '[{"suffixes":[],"diff-driver":null}]',
+      '[{"suffixes":[".md"],"diff-driver":"rst"}]', '[{"suffixes":[".md"],"diff-driver":"Markdown"}]',
+      '[{"suffixes":[".md"],"diff-driver":"^#+ .*$"}]', '[{"suffixes":[".md"],"diff-driver":""}]',
+      '[{"suffixes":[".md"],"diff-driver":["markdown"]}]', '[{"suffixes":[".md"],"diff-driver":1}]',
+      '[{"suffixes":[".md"],"diff-driver":"markdown"},{"suffixes":[".md"],"diff-driver":null}]',
+      '[{"suffixes":[".MD"],"diff-driver":"markdown"}]', '[{"suffixes":["md"],"diff-driver":null}]',
+      '[{"suffixes":["*.md"],"diff-driver":null}]', '[{"suffixes":[".m d"],"diff-driver":null}]',
+    ):
+      self.rejects("DOC_SOURCES", value)
+
+  def test_a_suffix_cannot_be_both_documentation_and_copy_source(self) -> None:
+    docs = '[{"suffixes":[".txt"],"diff-driver":null}]'
+    for copies in ('[{"suffixes":[".txt"],"ignore":[]}]', '[{"suffixes":[".TXT"],"ignore":[]}]'):
+      with self.subTest(copies=copies):
+        with self.assertRaisesRegex(review_options.RejectedOption, "both"):
+          self.settings(DOC_SOURCES=docs, COPY_SOURCES=copies)
 
   def test_copy_sources(self) -> None:
     value = '[{"suffixes":[".R",".r",".R"],"ignore":["#","library("]},{"suffixes":[".sql"],"ignore":[]}]'

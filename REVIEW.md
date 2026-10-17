@@ -27,6 +27,7 @@
   - `${{ }}` を `run:` のスクリプトへ直接展開する（値は `env:` 経由で渡す）
   - 値を選ぶ `&&` / `||` の式で、空や不正な値を別の値に黙って置き換える
   - caller の入力で、Claude に許すツールの種類や書き込み先を広げる（caller が足せるのは検査済みの文書ホストだけ）
+  - caller の値を Git の attributes や設定へ書くとき、検査済みの閉集合（`review_options.py` の `DIFF_DRIVERS`）以外の値や、caller の正規表現を通す
   - 方針ファイルや制御ファイル（`prepare.py` の `CONTROL_DIR`・`CONTROL_FILES`）を base ブランチ以外から読む、または PR 側の版を有効な設定として残す
 - **正本の一意性と必須 input**：caller のリポジトリを表す input（何を読み、どう分類するか）は必須で、共有側に既定値を持たない。そこに既定値を足して特定言語・エコシステムの知識を共有側へ戻していないか。運用の調整値（モデル・effort・timeout）の既定値の正本は `claude-review.yml` の `default:` 1 か所で、同じ値・列挙・上限を 2 か所に書いていないか。書き写しはいずれ食い違う
 - **Action の固定と runner**：外部 Action は full commit SHA で固定する。self-review は GitHub-hosted runner で動かす（public リポジトリで PR のコードを self-hosted runner に流さない）。workflow と job の `permissions` が必要以上に広くないか、Secret が露出しないか

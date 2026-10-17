@@ -12,6 +12,13 @@ import sys
 MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}(\[[A-Za-z0-9]{1,16}\])?")
 # CLAUDE_CODE_EFFORT_LEVEL が受ける値: https://code.claude.com/docs/en/model-config
 EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max", "auto"})
+# 検査済みの名前だけを gitattributes の diff= に書く。caller の xfuncname（正規表現）は受けない。
+# git 2.55.0 の一覧: https://git-scm.com/docs/gitattributes/2.55.0 "Defining a custom hunk-header"
+DIFF_DRIVERS = frozenset({
+  "ada", "bash", "bibtex", "cpp", "csharp", "css", "dts", "elixir", "fortran", "fountain",
+  "golang", "html", "java", "kotlin", "markdown", "matlab", "objc", "pascal", "perl", "php",
+  "python", "ruby", "rust", "scheme", "tex",
+})
 # 最後のラベルを英字始まりにして IP アドレスを拒む。
 HOSTNAME = re.compile(
   r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?"
@@ -138,30 +145,52 @@ def checked_items(value: list, variable: str, accepts) -> list[str]:
   return items
 
 
-def copy_sources(env: dict[str, str]) -> list[dict[str, list[str]]]:
-  """COPY_SOURCES の [{"suffixes": 拡張子の配列, "ignore": 無視する行頭の配列}] を検査して返す。
-
-  1 つの拡張子は 1 つのグループにだけ置ける。
-  """
-  groups = json_value(env, "COPY_SOURCES", list, "array")
+def suffix_groups(
+  env: dict[str, str], variable: str, accepts_suffix, field: str, checked_field
+) -> list[dict]:
+  """[{"suffixes": 拡張子の配列, field: 値}] を検査して返す。1 つの拡張子は 1 つのグループにだけ置ける。"""
+  groups = json_value(env, variable, list, "array")
   if len(groups) > MAX_LIST_ITEMS:
-    raise RejectedOption(f"COPY_SOURCES has more than {MAX_LIST_ITEMS} groups.")
+    raise RejectedOption(f"{variable} has more than {MAX_LIST_ITEMS} groups.")
   checked, seen = [], set()
   for group in groups:
-    if not isinstance(group, dict) or set(group) != {"suffixes", "ignore"}:
-      raise RejectedOption('COPY_SOURCES groups must have only "suffixes" and "ignore".')
-    if not isinstance(group["suffixes"], list) or not isinstance(group["ignore"], list):
-      raise RejectedOption('COPY_SOURCES "suffixes" and "ignore" must be arrays.')
-    suffixes = checked_items(group["suffixes"], "COPY_SOURCES", is_source_suffix)
+    if not isinstance(group, dict) or set(group) != {"suffixes", field}:
+      raise RejectedOption(f'{variable} groups must have only "suffixes" and "{field}".')
+    if not isinstance(group["suffixes"], list):
+      raise RejectedOption(f'{variable} "suffixes" must be an array.')
+    suffixes = checked_items(group["suffixes"], variable, accepts_suffix)
     if not suffixes:
-      raise RejectedOption('COPY_SOURCES has a group with no "suffixes".')
+      raise RejectedOption(f'{variable} has a group with no "suffixes".')
     if seen.intersection(suffixes):
-      raise RejectedOption("COPY_SOURCES lists a suffix in more than one group.")
+      raise RejectedOption(f"{variable} lists a suffix in more than one group.")
     seen.update(suffixes)
-    checked.append(
-      {"suffixes": suffixes, "ignore": checked_items(group["ignore"], "COPY_SOURCES", is_text)}
-    )
+    checked.append({"suffixes": suffixes, field: checked_field(group[field])})
   return checked
+
+
+def copy_sources(env: dict[str, str]) -> list[dict]:
+  """COPY_SOURCES の [{"suffixes": [...], "ignore": 無視する行頭の配列}] を検査して返す。"""
+  def ignore(value) -> list[str]:
+    if not isinstance(value, list):
+      raise RejectedOption('COPY_SOURCES "ignore" must be an array.')
+    return checked_items(value, "COPY_SOURCES", is_text)
+
+  return suffix_groups(env, "COPY_SOURCES", is_source_suffix, "ignore", ignore)
+
+
+def doc_sources(env: dict[str, str]) -> list[dict]:
+  """DOC_SOURCES の [{"suffixes": [...], "diff-driver": 組み込み driver 名か null}] を検査して返す。"""
+  def driver(value) -> str | None:
+    if value is not None and not (isinstance(value, str) and value in DIFF_DRIVERS):
+      raise RejectedOption('DOC_SOURCES "diff-driver" must be a built-in Git diff driver or null.')
+    return value
+
+  return suffix_groups(env, "DOC_SOURCES", is_doc_suffix, "diff-driver", driver)
+
+
+def diff_drivers(groups: list[dict]) -> dict[str, str | None]:
+  """検査済みの DOC_SOURCES を、拡張子 → diff driver の対応に展開する。"""
+  return {suffix: group["diff-driver"] for group in groups for suffix in group["suffixes"]}
 
 
 def ignore_prefixes(groups: list[dict[str, list[str]]]) -> dict[str, tuple[str, ...]]:
@@ -176,9 +205,12 @@ def review_settings(env: dict[str, str]) -> dict:
   policy = env.get("REVIEW_POLICY_PATH", "")
   if not is_relative_path(policy):
     raise RejectedOption("REVIEW_POLICY_PATH is not an accepted repository-relative path.")
+  docs, sources = doc_sources(env), copy_sources(env)
+  if set(diff_drivers(docs)) & {suffix.lower() for suffix in ignore_prefixes(sources)}:
+    raise RejectedOption("A suffix is in both DOC_SOURCES and COPY_SOURCES.")
   return {
-    "doc_suffixes": json_list(env, "DOC_SUFFIXES", is_doc_suffix),
-    "copy_sources": copy_sources(env),
+    "doc_sources": docs,
+    "copy_sources": sources,
     "exclude_paths": json_list(env, "EXCLUDE_PATHS", is_exclude_pattern),
     "review_policy_path": policy,
   }

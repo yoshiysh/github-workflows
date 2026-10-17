@@ -16,7 +16,7 @@ jobs:
     with:
       runs-on: '"ubuntu-latest"'
       doc-domains: '["docs.python.org"]'
-      doc-suffixes: '[".md"]'
+      doc-sources: '[{"suffixes":[".md"],"diff-driver":"markdown"}]'
       copy-sources: '[{"suffixes":[".py"],"ignore":["#","import ","from "]}]'
       exclude-paths: '[]'
       review-policy-path: REVIEW.md

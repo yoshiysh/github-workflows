@@ -16,10 +16,11 @@ INPUT = re.compile(r"^      ([a-z][a-z-]*):$")
 FIELD = re.compile(r"^        (default|required): (.+)$")
 WITH_VALUE = re.compile(r"^      ([a-z][a-z-]*): (.+)$")
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(ACTION_DIR))
 
 REQUIRED_INPUTS = {
-  "runs-on", "doc-domains", "doc-suffixes", "copy-sources", "exclude-paths",
+  "runs-on", "doc-domains", "doc-sources", "copy-sources", "exclude-paths",
   "review-policy-path",
 }
 DEFAULTED_INPUTS = {
@@ -30,7 +31,7 @@ DEFAULTED_INPUTS = {
 # 必須 input は共有側に既定値が無いので、テストは caller の例としてこの値を渡す。
 FIXTURE_INPUTS = {
   "doc-domains": "[]",
-  "doc-suffixes": '[".md",".markdown",".mdx"]',
+  "doc-sources": '[{"suffixes":[".md",".markdown",".mdx"],"diff-driver":"markdown"}]',
   "copy-sources": json.dumps([
     {"suffixes": [".rs"], "ignore": ["//", "/*", "*", "#", "use ", "pub use "]},
     {"suffixes": [".py"], "ignore": ["#", "import ", "from "]},

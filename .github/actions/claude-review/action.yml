@@ -23,8 +23,8 @@ inputs:
   doc_domains:
     description: JSON array of documentation hostnames the caller adds to the WebFetch allowlist.
     required: true
-  doc_suffixes:
-    description: JSON array of file suffixes reviewed by the docs kind.
+  doc_sources:
+    description: JSON array of docs-kind suffix groups and the built-in Git diff driver for each.
     required: true
   copy_sources:
     description: JSON array of copies.tsv suffix groups and the line prefixes each ignores.
@@ -59,7 +59,7 @@ runs:
         DOCS_EFFORT: ${{ inputs.docs_effort }}
         SUBAGENT_MODEL: ${{ inputs.subagent_model }}
         DOC_DOMAINS: ${{ inputs.doc_domains }}
-        DOC_SUFFIXES: ${{ inputs.doc_suffixes }}
+        DOC_SOURCES: ${{ inputs.doc_sources }}
         COPY_SOURCES: ${{ inputs.copy_sources }}
         EXCLUDE_PATHS: ${{ inputs.exclude_paths }}
         REVIEW_POLICY_PATH: ${{ inputs.review_policy_path }}
@@ -90,7 +90,7 @@ runs:
         PR: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
         GH_TOKEN: ${{ inputs.github_token }}
-        DOC_SUFFIXES: ${{ steps.options.outputs.doc_suffixes }}
+        DOC_SOURCES: ${{ steps.options.outputs.doc_sources }}
         COPY_SOURCES: ${{ steps.options.outputs.copy_sources }}
         EXCLUDE_PATHS: ${{ steps.options.outputs.exclude_paths }}
         REVIEW_POLICY_PATH: ${{ steps.options.outputs.review_policy_path }}
@@ -115,9 +115,10 @@ runs:
           Review inputs (all under .claude-review/${{ inputs.kind }}/):
           - review-profile.md: fixed review focus for this kind from the shared repository.
             Read and follow it. It is part of the pinned workflow, not caller-controlled input.
-          - files.tsv: one line per file to review, "<path>\t<status>\t<diff file>\t<bytes>".
-            Each diff holds the complete change; documentation diffs include whole changed sections
-            where Git can identify them.
+          - files.tsv: one line per file to review,
+            "<path>\t<status>\t<diff file>\t<bytes>\t<diff driver>". Each diff holds the complete
+            change. When the diff driver is not "-", the diff includes each changed section whole,
+            as that Git diff driver divides the file; otherwise it is a plain diff.
           - excluded.tsv: binaries, submodules, reserved workflow paths, and paths matching the
             caller's exclude patterns, omitted from review, with the reason.
           - copies.tsv: exact added source lines found in multiple files. Use these as leads;

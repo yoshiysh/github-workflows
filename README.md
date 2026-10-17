@@ -35,7 +35,7 @@ jobs:
     with:
       runs-on: '"ubuntu-latest"'
       doc-domains: '["docs.python.org"]'
-      doc-suffixes: '[".md",".markdown",".mdx"]'
+      doc-sources: '[{"suffixes":[".md",".markdown",".mdx"],"diff-driver":"markdown"}]'
       copy-sources: '[{"suffixes":[".py"],"ignore":["#","import ","from "]}]'
       exclude-paths: '["**/*.lock"]'
       review-policy-path: REVIEW.md
@@ -43,7 +43,7 @@ jobs:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
 
-To start only for documentation changes with the example `doc-suffixes` above, callers can add this optional filter under `pull_request`, with patterns that match their own `doc-suffixes`:
+To start only for documentation changes with the example `doc-sources` above, callers can add this optional filter under `pull_request`, with patterns that match their own `doc-sources` suffixes:
 
 ```yaml
 paths:
@@ -69,8 +69,8 @@ jobs:
     with:
       runs-on: '["self-hosted","linux"]'
       doc-domains: '[]'
-      doc-suffixes: '[".md"]'
-      copy-sources: '[{"suffixes":[".go"],"ignore":["//","import "]}]'
+      doc-sources: '[{"suffixes":[".md"],"diff-driver":"markdown"}]'
+      copy-sources: '[{"suffixes":[".go"],"ignore":["//","/*","import "]}]'
       exclude-paths: '[]'
       review-policy-path: docs/REVIEW.md
     secrets:
@@ -87,7 +87,7 @@ Inputs that describe the caller's repository — what to read and how to classif
 | --- | --- | --- | --- |
 | `runs-on` | Yes | The job's runner (see [Runner](#runner)) | JSON label string, label array, or `group` / `labels` object |
 | `doc-domains` | Yes | Hostnames added to the shared WebFetch allowlist (`FIXED_DOC_DOMAINS` in `review_options.py`); `[]` adds none | Lowercase DNS hostnames; no scheme, path, port, wildcard, or IP address |
-| `doc-suffixes` | Yes | File suffixes reviewed by the docs job; every other changed file goes to the code job, so with `[]` the docs job finds no files and skips Claude | `.` followed by lowercase letters or digits |
+| `doc-sources` | Yes | File suffixes reviewed by the docs job, grouped with the Git diff driver that divides those files into sections; every other changed file goes to the code job, so with `[]` the docs job finds no files and skips Claude | A JSON array of groups, each `{"suffixes": [...], "diff-driver": ...}` with only those two keys: `suffixes` is a non-empty array of `.` followed by lowercase letters or digits, and `diff-driver` is a built-in Git diff driver name (`DIFF_DRIVERS` in `review_options.py`) or `null`. A suffix may appear in only one group and not in `copy-sources` |
 | `copy-sources` | Yes | Code files whose added lines are compared for `copies.tsv`, and the line prefixes ignored in each, such as that language's comments and imports | A JSON array of groups, each `{"suffixes": [...], "ignore": [...]}` with only those two keys: `suffixes` is a non-empty array of file suffixes (`.` followed by letters or digits, matched case-sensitively), and `ignore` is an array of prefixes (non-empty text without tabs, newlines, or other control characters). A suffix may appear in only one group; `[]` leaves `copies.tsv` empty |
 | `exclude-paths` | Yes | Changed paths left out of review and listed in `excluded.tsv` with the matching pattern; `[]` excludes none | Glob patterns built from literal characters, `*`, `?` and `**`; no `[` or `]`, no leading or trailing `/`, no empty, `.` or `..` segments, no control characters, and at most `MAX_TEXT_LENGTH` (in `review_options.py`) characters |
 | `review-policy-path` | Yes | The review policy file read from the base branch | A repository-relative file path: no leading or trailing `/`, no empty, `.` or `..` segments, no control characters, and at most `MAX_TEXT_LENGTH` (in `review_options.py`) characters |
@@ -106,7 +106,9 @@ Each `copy-sources` group gives one language's suffixes and prefixes, so a prefi
 
 Every checked value, such as a serialized list input, also has a size limit (`MAX_OUTPUT_BYTES` in `review_options.py`), because each checked value is passed to the next step as one environment variable and Linux limits a single environment string to 128 KiB; a larger value stops the job with an error.
 
-The docs job reads files with any `doc-suffixes` suffix as Markdown, using Git's Markdown diff driver to include whole changed sections.
+For a `doc-sources` group with a `diff-driver`, the docs job writes `diff=<driver>` for its suffixes (in either ASCII case) to a Git attributes file and diffs those files with `--function-context`, so each changed section is included whole, as that built-in driver divides the file (see "Defining a custom hunk-header" in [gitattributes](https://git-scm.com/docs/gitattributes/2.55.0)). A group with `null` gets a plain diff, as code files do. Only built-in driver names are accepted; a caller cannot supply its own section pattern. The accepted names are the built-in drivers of Git 2.55.0; with a Git from 2.41 up to but not including 2.55.0, a driver that Git does not know falls back to Git's default section boundaries.
+
+Every `git diff` the action runs passes Git's [`--attr-source`](https://git-scm.com/docs/git/2.55.0) an empty tree, so it does not read the `.gitattributes` files in the repository's tree, from the pull request or the base branch; they cannot change a driver, mark a file `-diff` to hide it as binary, or otherwise change the diffs. The action also turns off the system-wide attributes file (`GIT_ATTR_NOSYSTEM`), stops with an error when the checkout has a `$GIT_DIR/info/attributes` file (which would take precedence), and runs `git diff` with `--no-textconv` and `--text`, so repository Git configuration cannot convert a file or mark it binary. The action decides binary files itself: a changed file whose blob on either side contains a NUL byte anywhere is listed in `excluded.tsv` as `binary`, whatever its suffix, driver, attributes, or Git configuration. A driver's section pattern (`diff.<driver>.xfuncname`) in the checkout's Git configuration still applies. Use `exclude-paths` to leave generated files out of review. Doc suffixes are matched ignoring ASCII case, so a `copy-sources` suffix that equals a doc suffix in any case is rejected: those files would always go to the docs job.
 
 `timeout-minutes` is applied by GitHub to the job before any step runs, so the range check can only fail the job once it has started. The upper bound is the 6-hour job limit for GitHub-hosted runners in [Actions limits](https://docs.github.com/en/actions/reference/limits), which keeps one value valid on both runner types.
 
@@ -116,7 +118,7 @@ This example, again with illustrative values, also tunes the optional inputs:
     with:
       runs-on: '"ubuntu-latest"'
       doc-domains: '["docs.python.org","nodejs.org"]'
-      doc-suffixes: '[".md"]'
+      doc-sources: '[{"suffixes":[".md"],"diff-driver":"markdown"},{"suffixes":[".rst"],"diff-driver":null}]'
       copy-sources: '[{"suffixes":[".py"],"ignore":["#","import ","from "]},{"suffixes":[".js",".mjs"],"ignore":["//","/*","*","import "]}]'
       exclude-paths: '["**/*.lock","**/package-lock.json","vendor/**"]'
       review-policy-path: REVIEW.md
@@ -124,12 +126,63 @@ This example, again with illustrative values, also tunes the optional inputs:
       code-effort: medium
 ```
 
+### Recipes
+
+These are values to copy and adapt, not defaults; the shared workflow applies none of them unless a caller passes them. Combine the groups for the languages a repository uses into one array.
+
+`copy-sources` groups for common languages:
+
+```json
+[
+  {"suffixes": [".py", ".pyi"], "ignore": ["#", "import ", "from "]},
+  {"suffixes": [".rs"], "ignore": ["//", "/*", "*", "#", "use ", "pub use ", "pub(crate) use "]},
+  {"suffixes": [".js", ".mjs", ".cjs", ".jsx", ".ts", ".mts", ".cts", ".tsx"], "ignore": ["//", "/*", "*", "#!", "import ", "} from ", "export * ", "export {"]},
+  {"suffixes": [".go"], "ignore": ["//", "/*", "import "]},
+  {"suffixes": [".sh", ".bash"], "ignore": ["#"]}
+]
+```
+
+| Language | Prefix | Lines it leaves out |
+| --- | --- | --- |
+| Python | `#` | Comments |
+| Python | `import `, `from ` | `import x` and `from x import y` |
+| Rust | `//` | Line and doc comments (`//`, `///`, `//!`) |
+| Rust | `/*`, `*` | Block comments and their continuation lines. `*` also hides any other line that starts with `*`, such as a dereference like `*count += 1;` |
+| Rust | `#` | Attributes such as `#[derive(...)]` and `#![...]` |
+| Rust | `use `, `pub use `, `pub(crate) use ` | Imports and re-exports |
+| JavaScript / TypeScript | `//`, `/*`, `*` | Line comments, block and JSDoc comments, and their continuation lines. `*` also hides any other line that starts with `*`, such as a generator method like `*[Symbol.iterator]() {` |
+| JavaScript / TypeScript | `#!` | A shebang line. A bare `#` is left out of this group because it would also hide private members such as `#cache = …` |
+| JavaScript / TypeScript | `import ` | Imports |
+| JavaScript / TypeScript | `} from `, `export * `, `export {` | The closing line of a multi-line import or re-export, `export * from …`, and export lists |
+| Go | `//`, `/*` | Line and block comments |
+| Go | `import ` | Single-line imports. Lines inside an `import ( … )` block start with a path or alias and cannot be told apart by prefix |
+| Shell | `#` | Comments, including the shebang |
+
+`exclude-paths` patterns for lockfiles and generated files:
+
+```json
+["**/*.lock", "**/package-lock.json", "**/pnpm-lock.yaml", "**/go.sum", "**/*.pb.go", "**/*_pb2.py", "**/*_pb2_grpc.py", "dist/**"]
+```
+
+`**/*.lock` covers lockfiles named `*.lock` at any depth, such as `Cargo.lock`, `yarn.lock`, `poetry.lock`, `uv.lock`, and `Gemfile.lock`. `**/package-lock.json` and `**/pnpm-lock.yaml` are the npm and pnpm lockfiles, `**/go.sum` holds Go module checksums, `**/*.pb.go`, `**/*_pb2.py`, and `**/*_pb2_grpc.py` are protocol buffer and gRPC output, and `dist/**` is the build output directory `dist/` at the repository root (use `**/dist/**` to leave out nested `dist/` directories too).
+
+`doc-sources` groups for Markdown and reStructuredText:
+
+```json
+[
+  {"suffixes": [".md", ".markdown"], "diff-driver": "markdown"},
+  {"suffixes": [".rst"], "diff-driver": null}
+]
+```
+
+Git has a built-in `markdown` driver, so Markdown diffs include whole sections. Git has no built-in reStructuredText driver, so `.rst` files get plain diffs.
+
 ### Repository setup
 
 1. Merge a reviewed change, then pin callers to the full commit SHA of the merged revision. A tag such as `v1` can remain as a convenient moving release alias, but it is not an immutable pin.
 2. In each caller repository, allow actions and reusable workflows in **Settings → Actions → General**, and, if the caller restricts which ones may run, allow `yoshiysh/github-workflows`. This repository is public, so it needs no **Access** setting for callers.
 3. In each caller repository, add `CLAUDE_CODE_OAUTH_TOKEN` as a repository secret and grant the permissions shown above.
-4. A self-hosted runner must be version [2.336.0](https://github.com/actions/runner/releases/tag/v2.336.0) or newer. The shared workflow uses the `$/` self-repository syntax to load its composite action from the exact workflow commit. GitHub maintains and upgrades GitHub-hosted runners.
+4. A self-hosted runner must be version [2.336.0](https://github.com/actions/runner/releases/tag/v2.336.0) or newer and have Git 2.41 or newer, the first release with `--attr-source` ([release notes](https://github.com/git/git/blob/v2.41.0/Documentation/RelNotes/2.41.0.txt)); with an older Git the action stops with an error instead of reviewing, because it could not keep the pull request's `.gitattributes` out of the diffs. The shared workflow uses the `$/` self-repository syntax to load its composite action from the exact workflow commit. GitHub maintains and upgrades GitHub-hosted runners.
 
 The shared workflow resolves `.github/actions/claude-review` from its own running commit, so pinning the caller's workflow to a full SHA also pins the composite action and its helper scripts to that same revision.
 
