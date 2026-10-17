@@ -207,12 +207,13 @@ def coverage_note(files: list[FileCoverage], excluded: list[str]) -> list[str]:
   return note
 
 
-def coverage_comment(files: list[FileCoverage]) -> list[str]:
-  """PR コメントには差分の読取件数だけを短く載せる。"""
+def coverage_comment(files: list[FileCoverage], run_url: str) -> list[str]:
+  """PR コメントには差分の読取件数と、ファイルごとの詳細へのリンクだけを 1 行で載せる。"""
   counts = Counter(f.status for f in files)
   return [
-    "**読んだ範囲**（workflow の実行ログから集計。Claude の申告ではない）: "
-    f"差分 {len(files)} 件（全部 {counts['full']}・一部 {counts['partial']}・未読 {counts['none']}）。"
+    "読んだ範囲（実行ログから集計。Claude の申告ではない）: "
+    f"差分 {len(files)} 件（全部 {counts['full']}・一部 {counts['partial']}・未読 {counts['none']}）"
+    f"・[詳細]({run_url})"
   ]
 
 
@@ -375,14 +376,7 @@ def main() -> None:
     shutil.copyfile(execution_file, out / EXECUTION_COPY)
   note = coverage_note(files, excluded)
   write_step_summary(env, result, note, files)
-  post(
-    env,
-    out,
-    [
-      *coverage_comment(files),
-      f"- ファイルごとの詳細: [Actions の実行 Summary]({env['RUN_URL']})",
-    ],
-  )
+  post(env, out, coverage_comment(files, env["RUN_URL"]))
 
 
 if __name__ == "__main__":

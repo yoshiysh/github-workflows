@@ -157,5 +157,18 @@ class PostTests(unittest.TestCase):
     self.assertEqual(fake.kinds(), ["post"])
 
 
+class CoverageCommentTests(unittest.TestCase):
+  def test_the_comment_gets_one_line_with_the_counts_and_the_run_link(self) -> None:
+    files = [
+      report.FileCoverage(path, status, None, [], [])
+      for path, status in (("a.py", "full"), ("b.py", "full"), ("c.py", "partial"), ("d.py", "none"))
+    ]
+    self.assertEqual(
+      report.coverage_comment(files, "https://example.invalid/run"),
+      ["読んだ範囲（実行ログから集計。Claude の申告ではない）: 差分 4 件（全部 2・一部 1・未読 1）"
+       "・[詳細](https://example.invalid/run)"],
+    )
+
+
 if __name__ == "__main__":
   unittest.main()
