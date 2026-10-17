@@ -17,6 +17,14 @@ on:
         description: Claude model for the Markdown review.
         type: string
         default: claude-sonnet-5-5
+      code-effort:
+        description: Claude Code effort level for the code review.
+        type: string
+        default: high
+      docs-effort:
+        description: Claude Code effort level for the Markdown review.
+        type: string
+        default: xhigh
       subagent-model:
         description: Claude model for the confirming agents in both reviews.
         type: string
@@ -72,6 +80,8 @@ jobs:
           kind: ${{ matrix.kind }}
           code_model: ${{ inputs.code-model }}
           docs_model: ${{ inputs.docs-model }}
+          code_effort: ${{ inputs.code-effort }}
+          docs_effort: ${{ inputs.docs-effort }}
           subagent_model: ${{ inputs.subagent-model }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}

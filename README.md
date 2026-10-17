@@ -67,22 +67,29 @@ jobs:
 
 `'["ubuntu-latest"]'` is equivalent. A bare `ubuntu-latest` without the inner JSON quotes is not valid JSON and fails. A public repository should not route pull request code to self-hosted runners; this repository's own `claude-review-self.yml` uses `ubuntu-latest` for that reason.
 
-### Models
+### Models and effort
 
-Model inputs are optional. Their defaults are the `default:` values in `.github/workflows/claude-review.yml`.
+Model and effort inputs are optional. Their defaults are the `default:` values in `.github/workflows/claude-review.yml`.
 
 | Input | Used for |
 | --- | --- |
 | `code-model` | `--model` for the code review job |
 | `docs-model` | `--model` for the Markdown review job |
+| `code-effort` | `CLAUDE_CODE_EFFORT_LEVEL` for the code review job |
+| `docs-effort` | `CLAUDE_CODE_EFFORT_LEVEL` for the Markdown review job |
 | `subagent-model` | `CLAUDE_CODE_SUBAGENT_MODEL`, the default model for the confirming agents in both jobs |
 
-Each value must be a model ID or alias such as `claude-sonnet-5-5`, `opus[1m]`, or a provider form with `.`, `:`, `/` or `@`, and must start with a letter or digit. Values with spaces, quotes, `$`, or any other first character stop the job before Claude runs.
+Each job uses only the inputs for its own kind; an empty or rejected value stops that job instead of falling back to the other kind's value.
+
+Each model value must be a model ID or alias such as `claude-sonnet-5-5`, `opus[1m]`, or a provider form with `.`, `:`, `/` or `@`, and must start with a letter or digit. Values with spaces, quotes, `$`, or any other first character stop the job before Claude runs.
+
+Each effort value must be one of the levels that [`CLAUDE_CODE_EFFORT_LEVEL` accepts](https://code.claude.com/docs/en/model-config); `.github/actions/claude-review/claude_options.py` holds the accepted set.
 
 ```yaml
     with:
       runs-on: '"ubuntu-latest"'
       code-model: claude-sonnet-5-5
+      code-effort: medium
       subagent-model: claude-haiku-5-5
 ```
 

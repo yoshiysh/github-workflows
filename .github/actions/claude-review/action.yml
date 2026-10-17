@@ -11,6 +11,12 @@ inputs:
   docs_model:
     description: Claude model for the Markdown review, chosen by the reusable workflow.
     required: true
+  code_effort:
+    description: Claude Code effort level for the code review, chosen by the reusable workflow.
+    required: true
+  docs_effort:
+    description: Claude Code effort level for the Markdown review, chosen by the reusable workflow.
+    required: true
   subagent_model:
     description: Claude model for confirming agents, chosen by the reusable workflow.
     required: true
@@ -24,15 +30,17 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Validate review kind and model names
-      id: models
+    - name: Validate review kind, models, and effort
+      id: options
       shell: bash
       env:
         KIND: ${{ inputs.kind }}
         CODE_MODEL: ${{ inputs.code_model }}
         DOCS_MODEL: ${{ inputs.docs_model }}
+        CODE_EFFORT: ${{ inputs.code_effort }}
+        DOCS_EFFORT: ${{ inputs.docs_effort }}
         SUBAGENT_MODEL: ${{ inputs.subagent_model }}
-      run: python "$GITHUB_ACTION_PATH/models.py"
+      run: python "$GITHUB_ACTION_PATH/claude_options.py"
 
     - name: Validate Claude credentials
       shell: bash
@@ -66,8 +74,8 @@ runs:
       if: steps.prepare.outputs.count != '0'
       uses: anthropics/claude-code-action@374f254f5efaf968abfe15d399fd90972e8138b9 # v1.0.251
       env:
-        CLAUDE_CODE_EFFORT_LEVEL: ${{ inputs.kind == 'code' && 'high' || 'xhigh' }}
-        CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.models.outputs.subagent_model }}
+        CLAUDE_CODE_EFFORT_LEVEL: ${{ steps.options.outputs.effort }}
+        CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.options.outputs.subagent_model }}
         CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
       with:
         claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
@@ -123,7 +131,7 @@ runs:
           documentation at ${{ steps.prepare.outputs.doc_domains }}. Write only the
           summary path above. Tell every Agent you launch the same restrictions.
         claude_args: |
-          --model ${{ steps.models.outputs.model }}
+          --model ${{ steps.options.outputs.model }}
           --permission-mode dontAsk
           --settings '{"disableAllHooks": true}'
           --strict-mcp-config
