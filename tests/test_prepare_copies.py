@@ -9,11 +9,13 @@ sys.path.insert(
   0, str(Path(__file__).resolve().parents[1] / ".github/actions/claude-review")
 )
 import prepare
+import review_options
+from workflow_defaults import default_env
 
 REPEATED = 'const message = `Unsupported review kind: ${kind}`;'
 
 
-class SourceCopyTests(unittest.TestCase):
+class RepoCase(unittest.TestCase):
   def setUp(self) -> None:
     self.original_cwd = Path.cwd()
     self.temp_dir = tempfile.TemporaryDirectory()
@@ -31,16 +33,33 @@ class SourceCopyTests(unittest.TestCase):
       ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
     ).stdout.strip()
 
+  def collect(self, kind: str = "code", **values: str) -> tuple:
+    settings = review_options.review_settings({**default_env(), **values})
+    diff_dir = Path("diff")
+    diff_dir.mkdir()
+    rows, excluded, symlinks, lines = prepare.collect(
+      kind,
+      f"{self.base}...HEAD",
+      diff_dir,
+      Path("unused.attributes"),
+      doc_suffixes=settings["doc_suffixes"],
+      source_suffixes=settings["source_suffixes"],
+      exclude_paths=settings["exclude_paths"],
+    )
+    return rows, excluded, symlinks, lines, settings
+
   def copies_after(self, path: str, added: str) -> list[str]:
     Path(path).write_text(added, encoding="utf-8")
     self.commit(path)
-    diff_dir = Path("diff")
-    diff_dir.mkdir()
-    _rows, _excluded, _symlinks, lines = prepare.collect(
-      "code", f"{self.base}...HEAD", diff_dir, Path("unused.attributes")
+    _rows, _excluded, _symlinks, lines, settings = self.collect()
+    return prepare.copies(
+      lines,
+      prepare.tracked_sources("HEAD", lines, settings["source_suffixes"]),
+      settings["copy_ignore_prefixes"],
     )
-    return prepare.copies(lines, prepare.tracked_sources("HEAD", lines))
 
+
+class SourceCopyTests(RepoCase):
   def test_repeated_mjs_line_is_reported(self) -> None:
     Path("a.mjs").write_text(f"export function a(kind) {{\n  {REPEATED}\n}}\n")
     self.base = self.commit("a.mjs")
@@ -86,19 +105,55 @@ class SourceCopyTests(unittest.TestCase):
     )
 
 
-class DocDomainOutputTests(unittest.TestCase):
-  def test_prompt_and_allowed_tools_list_the_same_domains(self) -> None:
-    lines = dict(
-      line.split("=", 1) for line in prepare.doc_domain_outputs().splitlines()
+class ExcludePathTests(RepoCase):
+  def test_matching_paths_are_listed_in_excluded_with_the_pattern(self) -> None:
+    Path("keep.py").write_text("print('base')\n")
+    self.base = self.commit("keep.py")
+    Path("vendor/lib").mkdir(parents=True)
+    Path("vendor/lib/x.py").write_text("print('vendored')\n")
+    Path("app.generated.ts").write_text("export const x = 1;\n")
+    Path("keep.py").write_text("print('changed')\n")
+    self.commit("vendor/lib/x.py", "app.generated.ts", "keep.py")
+
+    rows, excluded, _symlinks, _lines, _settings = self.collect(
+      EXCLUDE_PATHS='["vendor/**","**/*.generated.ts"]'
     )
 
-    prose = lines["doc_domains"].replace(", and ", ", ").split(", ")
-    tools = [
-      tool.removeprefix("WebFetch(domain:").removesuffix(")")
-      for tool in lines["webfetch_tools"].split(",")
-    ]
-    self.assertEqual(prose, list(prepare.DOC_DOMAINS))
-    self.assertEqual(tools, list(prepare.DOC_DOMAINS))
+    self.assertEqual([row.split("\t", 1)[0] for row in rows], ["keep.py"])
+    self.assertEqual(
+      sorted(excluded),
+      [
+        "app.generated.ts\texclude-paths: **/*.generated.ts",
+        "vendor/lib/x.py\texclude-paths: vendor/**",
+      ],
+    )
+
+
+class DefaultSelectionTests(RepoCase):
+  def changed(self, *paths: str) -> None:
+    Path("base.txt").write_text("base\n")
+    self.base = self.commit("base.txt")
+    for path in paths:
+      Path(path).parent.mkdir(parents=True, exist_ok=True)
+      Path(path).write_text("changed\n")
+    self.commit(*paths)
+
+  def test_uppercase_markdown_suffix_goes_to_the_docs_job(self) -> None:
+    self.changed("README.MD", "main.py")
+
+    docs, *_ = self.collect("docs")
+    self.assertEqual([row.split("\t", 1)[0] for row in docs], ["README.MD"])
+
+  def test_lockfiles_are_excluded_by_default(self) -> None:
+    self.changed("Cargo.lock", "web/package-lock.json", "web/pnpm-lock.yaml", "main.py")
+
+    rows, excluded, *_ = self.collect()
+
+    self.assertEqual([row.split("\t", 1)[0] for row in rows], ["main.py"])
+    self.assertEqual(
+      sorted(line.split("\t", 1)[0] for line in excluded),
+      ["Cargo.lock", "web/package-lock.json", "web/pnpm-lock.yaml"],
+    )
 
 
 if __name__ == "__main__":

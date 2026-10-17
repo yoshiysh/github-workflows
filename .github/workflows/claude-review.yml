@@ -14,7 +14,7 @@ on:
         type: string
         default: claude-opus-5-5
       docs-model:
-        description: Claude model for the Markdown review.
+        description: Claude model for the documentation review.
         type: string
         default: claude-sonnet-5-5
       code-effort:
@@ -22,13 +22,45 @@ on:
         type: string
         default: high
       docs-effort:
-        description: Claude Code effort level for the Markdown review.
+        description: Claude Code effort level for the documentation review.
         type: string
         default: xhigh
       subagent-model:
         description: Claude model for the confirming agents in both reviews.
         type: string
         default: claude-sonnet-5-5
+      doc-domains:
+        description: >-
+          JSON array of documentation hostnames added to the shared WebFetch allowlist, such as
+          '["docs.python.org"]'.
+        type: string
+        default: '[]'
+      doc-suffixes:
+        description: JSON array of lowercase file suffixes reviewed by the docs job.
+        type: string
+        default: '[".md",".markdown",".mdx"]'
+      source-suffixes:
+        description: JSON array of file suffixes whose added lines are compared for copies.tsv.
+        type: string
+        default: '[".rs",".py",".sh",".js",".mjs",".cjs",".ts",".mts",".cts"]'
+      copy-ignore-prefixes:
+        description: JSON array of line prefixes, such as comments and imports, that copies.tsv ignores.
+        type: string
+        default: '["//","/*","#","*","use ","pub use ","import ","from ","} from ","export * ","export {"]'
+      exclude-paths:
+        description: >-
+          JSON array of repository-relative glob patterns using *, ? and ** that exclude paths
+          from review. A value replaces the default lockfile patterns.
+        type: string
+        default: '["**/*.lock","**/package-lock.json","**/pnpm-lock.yaml"]'
+      review-policy-path:
+        description: Repository-relative path of the review policy read from the base branch.
+        type: string
+        default: REVIEW.md
+      timeout-minutes:
+        description: Job timeout in minutes.
+        type: number
+        default: 60
     secrets:
       claude_code_oauth_token:
         description: Claude Code OAuth token owned by the calling repository.
@@ -47,7 +79,7 @@ jobs:
           github.event.sender.type == 'User' &&
           github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ${{ fromJSON(inputs.runs-on) }}
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
       pull-requests: write
@@ -83,5 +115,12 @@ jobs:
           code_effort: ${{ inputs.code-effort }}
           docs_effort: ${{ inputs.docs-effort }}
           subagent_model: ${{ inputs.subagent-model }}
+          doc_domains: ${{ inputs.doc-domains }}
+          doc_suffixes: ${{ inputs.doc-suffixes }}
+          source_suffixes: ${{ inputs.source-suffixes }}
+          copy_ignore_prefixes: ${{ inputs.copy-ignore-prefixes }}
+          exclude_paths: ${{ inputs.exclude-paths }}
+          review_policy_path: ${{ inputs.review-policy-path }}
+          timeout_minutes: ${{ inputs.timeout-minutes }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}
