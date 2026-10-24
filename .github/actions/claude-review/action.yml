@@ -99,7 +99,7 @@ runs:
     - name: Review the PR
       id: review
       if: steps.prepare.outputs.count != '0'
-      uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
+      uses: anthropics/claude-code-action@16f9f71ab9c490faf367f94dd294897edc25be33 # v1.0.261
       env:
         CLAUDE_CODE_EFFORT_LEVEL: ${{ steps.options.outputs.effort }}
         CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.options.outputs.subagent_model }}
